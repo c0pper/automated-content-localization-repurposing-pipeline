@@ -509,8 +509,10 @@ completed cells and only re-runs missing cells.
 - A Derived Job is created from a parent whose Base Clips are retained: `COMPLETED`,
   `EXPIRED` or `CANCELLED`. A parent with no Base Clips (early failure) is not eligible.
 - `copy` mode refreshes the per-Clip Hook and social caption from the retained Clip source
-  text. It carries forward the parent's LinkedIn and newsletter copy; fresh long-form copy
-  requires a fresh Job from the Source Recording. It skips the Selection Gate and commits no
+  text. It carries forward the parent's LinkedIn and newsletter copy unchanged; fresh
+  long-form copy requires a fresh Job from the Source Recording. The child bundle records
+  `copy_origin` for each copy asset: `generated` for the refreshed per-Clip copy and `parent`
+  for the carried-forward long-form copy. It skips the Selection Gate and commits no
   localization spend.
 - `localization` mode re-enters the Selection Gate with the parent's Base Clips and the
   requested Target Languages. It localizes only the new selection and produces a new Review
@@ -673,6 +675,11 @@ invalid shapes, unsupported languages/models, source/target conflicts and unsafe
     "linkedin_post": "# LinkedIn breakdown...",
     "newsletter": "# Newsletter draft..."
   },
+  "copy_origin": {
+    "clips": "generated",
+    "linkedin": "generated",
+    "newsletter": "generated"
+  },
   "selection": null,
   "cost": {
     "job_budget_usd": "50.00",
@@ -685,9 +692,11 @@ invalid shapes, unsupported languages/models, source/target conflicts and unsafe
 ```
 
 `segments` is the wire alias for Clips. The `localized_assets` and `localized_copy` maps are
-empty until localization runs. `content` is Source Language copy. `selection`, when present,
-is `{segment_ids, languages, expected_total_usd, confirmed_at}`. `review_url` is present when
-a review token exists. `expires_at` is present only at the gate. `error` is
+empty until localization runs. `content` is Source Language copy. `copy_origin` is
+`generated` for copy produced by this Job or `parent` for long-form copy carried forward from
+a copy-only Derived Job. `selection`, when present, is
+`{segment_ids, languages, expected_total_usd, confirmed_at}`. `review_url` is present when a
+review token exists. `expires_at` is present only at the gate. `error` is
 `{code, message, retryable}` on `FAILED`.
 
 #### Job list, bundle, events and cost
@@ -824,9 +833,18 @@ Manifest shape:
   "content": {
     "linkedin_post": "# LinkedIn breakdown...",
     "newsletter": "# Newsletter draft..."
+  },
+  "copy_origin": {
+    "clips": "generated",
+    "linkedin": "generated",
+    "newsletter": "generated"
   }
 }
 ```
+
+For a copy-only Derived Job, `copy_origin` is `{"clips": "generated", "linkedin":
+"parent", "newsletter": "parent"}`. The long-form copy is byte-for-byte the parent's copy and
+is not presented as newly generated.
 
 The manifest excludes Source Recording, Transcript, cost and intermediates. It includes
 whatever assets exist for a partial Job and reports the Job's status.
@@ -891,9 +909,9 @@ Postgres schema, expressed as tables and constraints rather than file paths:
 - `voice_profiles` — workspace_id PK, provider, voice_id, created/updated timestamps.
 - `jobs` — job_id PK, workspace_id, creator_id, status, stage, source kind, URL/object key,
   declared/detected/effective Source Language and origin, Target Languages JSONB,
-  lip_sync, model overrides JSONB, parent_job_id, derived_mode, Job Budget micro-USD,
-  expires_at, error code/message, retryable, created/updated timestamps. The confirmed
-  selection lives in `selections`; review tokens live in `review_tokens`.
+  lip_sync, model overrides JSONB, parent_job_id, derived_mode, copy_origin JSONB, Job Budget
+  micro-USD, expires_at, error code/message, retryable, created/updated timestamps. The
+  confirmed selection lives in `selections`; review tokens live in `review_tokens`.
 - `clips` — clip_id PK, job_id FK, ordinal, start/end seconds, spoken source text, Hook,
   caption, Rationale, selection score, score breakdown JSONB, Base Clip asset key, Base Clip
   Master key, created_at. Unique `(job_id, ordinal)`.
@@ -1111,8 +1129,10 @@ are repeated in each issue body.
     no final notification on cancel. Jobs can be stopped and transient failures recovered.
     **Blocked by:** 11.
 13. **Derived Jobs** — copy and localization modes, parent eligibility, inherited Base Clips,
-    Clip source text and Source Language, copy scope, localization gate re-entry, new review
-    token/bundle. A Derived Job after the Transcript is pruned must not re-transcribe.
+    Clip source text and Source Language, copy scope with `copy_origin`, localization gate
+    re-entry, new review token/bundle. A Derived Job after the Transcript is pruned must not
+    re-transcribe. A copy-only child refreshes per-Clip copy and carries long-form copy
+    forward unchanged.
     **Blocked by:** 11.
 14. **Workspace Purge and review-link rotation** — dry-run/confirm purge with confirmation
     token, active-Job guard, deletion of Job data/assets/tokens/ledger/events, link rotation
@@ -1135,9 +1155,9 @@ Resolved clarifications:
   verification is a hardening follow-up.
 - Workspace Settings and Purge confirmation token are accepted API surfaces; the design
   decisions require the behavior, not these exact paths.
-
-Open clarifications:
-
 - Copy-only Derived Jobs refresh the per-Clip Hook and social caption and carry forward the
-  parent's LinkedIn/newsletter copy. Fresh long-form copy requires a fresh Job from the
-  Source Recording. Confirm this is the intended copy scope.
+  parent's LinkedIn/newsletter copy unchanged. The child bundle marks the origin of each copy
+  asset as `generated` or `parent`. Fresh long-form copy requires a fresh Job from the Source
+  Recording.
+
+Open clarifications: none.
