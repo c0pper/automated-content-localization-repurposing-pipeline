@@ -100,6 +100,7 @@ uv run ruff check .
 
 - [GLOSSARY.md](GLOSSARY.md) — canonical domain language
 - [docs/adr](docs/adr/) — decisions that are costly to reverse
+- [docs/spec/v1-pipeline.md](docs/spec/v1-pipeline.md) — v1 API and implementation spec (draft)
 
 ## What is stubbed
 
