@@ -37,6 +37,7 @@ async def test_pipeline_produces_clips_copy_and_localized_assets(settings, tmp_p
         assert segment.start_time.count(":") == 2
         assert set(segment.localized_assets) == {"es", "de"}
         assert segment.video_asset_url is not None
+        assert segment.source_text
 
     # Social copy and newsletter are generated and attached to the job.
     assert stored.content is not None

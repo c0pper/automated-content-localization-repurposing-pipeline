@@ -75,7 +75,7 @@ class PipelineOrchestrator:
                 transcript=intelligence.transcript,
                 clips=intelligence.clips,
             )
-            job.segments = [clip.segment for clip in edited]
+            job.segments = [edited_clip.clip for edited_clip in edited]
             await self._save(job)
 
             await self._enter_stage(job, JobStage.LOCALIZATION)

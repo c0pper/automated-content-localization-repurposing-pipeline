@@ -11,7 +11,7 @@ from pathlib import Path
 from app.agents.base import workspace_for
 from app.captions import build_srt
 from app.domain.artifacts import EditedClip
-from app.domain.models import ClipCandidate, Job, Segment, Transcript
+from app.domain.models import Clip, ClipCandidate, Job, Transcript
 from app.domain.timestamps import format_timestamp
 from app.ports import MediaProcessor, ObjectStore
 
@@ -37,33 +37,40 @@ class VideoEditorAgent:
         clips: Sequence[ClipCandidate],
     ) -> list[EditedClip]:
         workspace = workspace_for(self._workspace_root, job.job_id)
+        source_language = job.source_language.code if job.source_language else "en"
         edited: list[EditedClip] = []
 
-        for clip in clips:
+        for candidate in clips:
             captions = build_srt(
                 transcript.words,
-                clip_start=clip.start_seconds,
-                clip_end=clip.end_seconds,
+                clip_start=candidate.start_seconds,
+                clip_end=candidate.end_seconds,
             )
-            destination = workspace / f"clip_{clip.segment_id}_en.mp4"
+            destination = workspace / f"clip_{candidate.segment_id}_{source_language}.mp4"
             await self._media.render_vertical_clip(
                 source_path,
                 destination,
-                start_seconds=clip.start_seconds,
-                end_seconds=clip.end_seconds,
+                start_seconds=candidate.start_seconds,
+                end_seconds=candidate.end_seconds,
                 captions=captions,
             )
 
-            key = f"jobs/{job.job_id}/clips/clip_{clip.segment_id}_en.mp4"
-            url = await self._store.put(destination, key)
-            segment = Segment(
-                segment_id=clip.segment_id,
-                start_time=format_timestamp(clip.start_seconds),
-                end_time=format_timestamp(clip.end_seconds),
-                hook_title=clip.hook_title,
-                caption=clip.caption,
-                video_asset_url=url,
+            key = (
+                f"jobs/{job.job_id}/clips/"
+                f"clip_{candidate.segment_id}_{source_language}.mp4"
             )
-            edited.append(EditedClip(segment=segment, candidate=clip, path=destination))
+            url = await self._store.put(destination, key)
+            clip = Clip(
+                segment_id=candidate.segment_id,
+                start_time=format_timestamp(candidate.start_seconds),
+                end_time=format_timestamp(candidate.end_seconds),
+                hook_title=candidate.hook_title,
+                caption=candidate.caption,
+                video_asset_url=url,
+                source_text=transcript.text_between(
+                    candidate.start_seconds, candidate.end_seconds
+                ),
+            )
+            edited.append(EditedClip(clip=clip, candidate=candidate, path=destination))
 
         return edited

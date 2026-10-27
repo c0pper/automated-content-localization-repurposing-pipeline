@@ -44,35 +44,37 @@ class LocalizationAgent:
         assets: dict[int, dict[str, str]] = {}
         characters = 0
 
-        for clip in edited:
-            source_text = transcript.text_between(
-                clip.candidate.start_seconds, clip.candidate.end_seconds
+        for edited_clip in edited:
+            clip = edited_clip.clip
+            source_text = clip.source_text or transcript.text_between(
+                edited_clip.candidate.start_seconds,
+                edited_clip.candidate.end_seconds,
             )
             if not source_text:
-                source_text = clip.candidate.caption
+                source_text = edited_clip.candidate.caption
 
             for language in job.target_languages:
                 translated = await self._translator.translate(source_text, language)
                 characters += len(translated)
 
-                voice_path = workspace / f"clip_{clip.segment.segment_id}_{language}.wav"
+                voice_path = workspace / f"clip_{clip.segment_id}_{language}.wav"
                 await self._voice.synthesize(translated, language, voice_path)
-                dubbed_path = workspace / f"clip_{clip.segment.segment_id}_{language}.mp4"
+                dubbed_path = workspace / f"clip_{clip.segment_id}_{language}.mp4"
 
                 if self._lip_syncer is not None:
                     output = await self._lip_syncer.sync(
-                        clip.path, voice_path, dubbed_path, language
+                        edited_clip.path, voice_path, dubbed_path, language
                     )
                 else:
                     output = await self._media.replace_audio(
-                        clip.path, voice_path, dubbed_path
+                        edited_clip.path, voice_path, dubbed_path
                     )
 
                 key = (
                     f"jobs/{job.job_id}/localized/"
-                    f"clip_{clip.segment.segment_id}_{language}.mp4"
+                    f"clip_{clip.segment_id}_{language}.mp4"
                 )
                 url = await self._store.put(output, key)
-                assets.setdefault(clip.segment.segment_id, {})[language] = url
+                assets.setdefault(clip.segment_id, {})[language] = url
 
         return LocalizationResult(assets=assets, characters=characters)

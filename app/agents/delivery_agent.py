@@ -61,7 +61,9 @@ class DeliveryAgent:
             captions_path, f"jobs/{job.job_id}/copy/captions.csv"
         )
 
-        links = [segment.video_asset_url for segment in job.segments if segment.video_asset_url]
+        links = [
+            clip.video_asset_url for clip in job.segments if clip.video_asset_url
+        ]
         for localized_assets in localized.assets.values():
             links.extend(localized_assets.values())
         links.extend(files.values())
@@ -74,15 +76,15 @@ class DeliveryAgent:
         buffer = io.StringIO()
         writer = csv.writer(buffer)
         writer.writerow(["segment_id", "start_time", "end_time", "title", "caption"])
-        for clip in edited:
-            segment = clip.segment
+        for edited_clip in edited:
+            clip = edited_clip.clip
             writer.writerow(
                 [
-                    segment.segment_id,
-                    segment.start_time,
-                    segment.end_time,
-                    segment.hook_title,
-                    segment.caption,
+                    clip.segment_id,
+                    clip.start_time,
+                    clip.end_time,
+                    clip.hook_title,
+                    clip.caption,
                 ]
             )
         return buffer.getvalue()

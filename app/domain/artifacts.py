@@ -9,10 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.domain.models import (
+    Clip,
     ClipCandidate,
     ContentBundle,
     MediaProbe,
-    Segment,
     Transcript,
 )
 
@@ -33,7 +33,7 @@ class IntelligenceResult:
 
 @dataclass(frozen=True, slots=True)
 class EditedClip:
-    segment: Segment
+    clip: Clip
     candidate: ClipCandidate
     path: Path
 

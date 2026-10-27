@@ -26,6 +26,15 @@ class GuardrailViolation(PipelineError):
         return {"code": self.code, "message": str(self)}
 
 
+class InvalidJobTransitionError(PipelineError):
+    """Raised when a Job status change violates the lifecycle contract."""
+
+    def __init__(self, current: object, target: object) -> None:
+        super().__init__(f"Invalid Job transition: {current} -> {target}")
+        self.current = current
+        self.target = target
+
+
 class MediaProcessingError(PipelineError):
     """Raised when the media backend cannot process an asset."""
 
