@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from app.adapters.local_object_store import LocalObjectStore
-from app.api.middleware import ApiAuthMiddleware, IdempotencyMiddleware
+from app.api.middleware import AuthMiddleware, IdempotencyMiddleware
 from app.api.router import api_router, root_router
 from app.config import Settings
 from app.container import Container, build_container
@@ -151,7 +151,7 @@ def create_app(
         expose_headers=["Location"],
     )
     app.add_middleware(IdempotencyMiddleware)
-    app.add_middleware(ApiAuthMiddleware)
+    app.add_middleware(AuthMiddleware)
 
     assets_dir: Path = container.settings.objects_dir
     assets_dir.mkdir(parents=True, exist_ok=True)

@@ -1,10 +1,9 @@
-"""API-key authentication and Workspace-scoped idempotency."""
+"""Idempotency middleware. Cookie-based JWT auth lives in app/security/auth.py."""
 
 from __future__ import annotations
 
 import hashlib
 import json
-import secrets
 from datetime import timedelta
 
 from fastapi import Request
@@ -36,30 +35,14 @@ def _request_hash(method: str, path: str, query: str, body: bytes) -> str:
     return digest.hexdigest()
 
 
-class ApiAuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        if request.method == "OPTIONS":
-            return await call_next(request)
-        if request.url.path.startswith(_OPEN_PREFIXES):
-            return await call_next(request)
-        if request.url.path in {"/healthz", "/readyz"}:
-            return await call_next(request)
-        if not request.url.path.startswith("/api/"):
-            return await call_next(request)
-
-        expected = request.app.state.container.settings.workspace_api_key
-        provided = request.headers.get("authorization", "")
-        token = provided[7:] if provided.lower().startswith("bearer ") else ""
-        if not expected or not secrets.compare_digest(token, expected):
-            return _error(401, "unauthorized", "A valid Workspace API key is required")
-        return await call_next(request)
-
-
 class IdempotencyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.method not in _IDEMPOTENT_METHODS:
             return await call_next(request)
         if not request.url.path.startswith("/api/"):
+            return await call_next(request)
+        # Auth endpoints are safe to call repeatedly; skip idempotency.
+        if request.url.path.startswith("/api/auth/"):
             return await call_next(request)
 
         container = request.app.state.container

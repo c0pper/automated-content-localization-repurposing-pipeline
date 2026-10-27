@@ -118,6 +118,9 @@ class Settings(BaseSettings):
     notification_webhook_url: str | None = None
     notification_signing_secret: str = "dev-notification-secret"
     cors_allowed_origins: str = "http://localhost:3000"
+    jwt_secret: str = "dev-jwt-secret-change-in-production"
+    jwt_access_token_ttl_seconds: int = 900  # 15 minutes
+    jwt_refresh_token_ttl_seconds: int = 604800  # 7 days
 
     @property
     def input_suffixes(self) -> tuple[str, ...]:
