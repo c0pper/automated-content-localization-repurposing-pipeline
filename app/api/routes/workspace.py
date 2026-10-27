@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Response, status
 
 from app.api.deps import ContainerDep
-from app.api.schemas import PurgeRequest, VoiceProfileRequest, WorkspaceUpdate
+from app.api.schemas import PresignedUploadRequest, PurgeRequest, VoiceProfileRequest, WorkspaceUpdate
 from app.api.views import workspace_view
 from app.domain.errors import ApiError
 from app.domain.money import parse_usd
@@ -16,6 +16,29 @@ router = APIRouter(tags=["workspace"])
 @router.get("/workspace")
 async def get_workspace(container: ContainerDep) -> dict:
     return workspace_view(await container.workspaces.snapshot())
+
+
+@router.post("/workspace/uploads/presign")
+async def presign_upload(
+    payload: PresignedUploadRequest,
+    container: ContainerDep,
+) -> dict:
+    """Issue a short-lived presigned URL for uploading an object under uploads/."""
+    key = payload.key
+    if not key.startswith("uploads/"):
+        raise ApiError(422, "invalid_key", "Upload key must start with 'uploads/'")
+    # Guard against traversal and double slashes.
+    if ".." in key.split("/"):
+        raise ApiError(422, "invalid_key", "Upload key must not contain '..'")
+    if "//" in key:
+        raise ApiError(422, "invalid_key", "Upload key must not contain '//'")
+
+    expected_key = f"uploads/{key[len('uploads/'):]}"
+    url = await container.store.presign(
+        expected_key,
+        ttl_seconds=container.settings.presign_ttl_seconds,
+    )
+    return {"upload_url": url, "key": expected_key}
 
 
 @router.put("/workspace")

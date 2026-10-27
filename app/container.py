@@ -34,6 +34,13 @@ from app.adapters.stubs import (
     StubMediaProcessor,
     StubTranscriber,
 )
+from app.adapters.elevenlabs_voice import ElevenLabsVoiceSynthesizer
+from app.adapters.openai_whisper import OpenAIWhisperTranscriber
+from app.adapters.openrouter_copy import OpenRouterCopywriter
+from app.adapters.openrouter_jev import OpenRouterClipScorer
+from app.adapters.openrouter_planning import OpenRouterClipPlanner
+from app.adapters.openrouter_translation import OpenRouterTranslator
+from app.adapters.synclabs_lipsync import SyncLabsLipSyncer
 from app.agents.delivery_agent import DeliveryAgent
 from app.agents.ingest_agent import IngestAgent
 from app.agents.intelligence_agent import IntelligenceAgent
@@ -60,6 +67,7 @@ from app.ports import (
     TaskQueue,
     WorkspaceRepository,
 )
+from app.ports.ai import ClipPlanner, ClipScorer, Copywriter, LipSyncer, Transcriber, Translator, VoiceSynthesizer
 from app.security.fetch import SafeRemoteFetcher
 from app.services.cost import CostService
 from app.services.derived import DerivedJobService
@@ -240,13 +248,31 @@ def build_container(settings: Settings | None = None) -> Container:
     else:
         media = StubMediaProcessor()
 
-    transcriber = StubTranscriber()
-    planner = StubClipPlanner()
-    scorer = StubClipScorer()
-    copywriter = StubCopywriter()
-    translator = EchoTranslator()
-    voice = SilentVoiceSynthesizer()
-    lip_syncer = StubLipSyncer() if settings.lip_sync_enabled else None
+    transcriber: Transcriber = StubTranscriber()
+    planner: ClipPlanner = StubClipPlanner()
+    scorer: ClipScorer = StubClipScorer()
+    copywriter: Copywriter = StubCopywriter()
+    translator: Translator = EchoTranslator()
+    voice: VoiceSynthesizer = SilentVoiceSynthesizer()
+    lip_syncer: LipSyncer | None = StubLipSyncer() if settings.lip_sync_enabled else None
+
+    if settings.openai_api_key:
+        transcriber = OpenAIWhisperTranscriber(model="whisper-1")
+    if settings.openrouter_api_key:
+        planner = OpenRouterClipPlanner(
+            model=settings.default_planning_model,
+            allowlist=set(settings.planning_model_allowlist),
+        )
+        copywriter = OpenRouterCopywriter(model=settings.default_copy_model)
+        translator = OpenRouterTranslator(model=settings.default_translation_model)
+        scorer = OpenRouterClipScorer(
+            model=settings.jev_model,
+            allowlist=set(settings.model_allowlists.keys()),
+        )
+    if settings.elevenlabs_api_key:
+        voice = ElevenLabsVoiceSynthesizer()
+    if settings.lip_sync_enabled and settings.synclabs_api_key:
+        lip_syncer = SyncLabsLipSyncer()
 
     ingest = IngestAgent(
         media=media,

@@ -94,6 +94,10 @@ class PurgeRequest(BaseModel):
     confirmation_token: str
 
 
+class PresignedUploadRequest(BaseModel):
+    key: str
+
+
 class ErrorDetail(BaseModel):
     code: str
     message: str
