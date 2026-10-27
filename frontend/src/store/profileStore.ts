@@ -18,79 +18,74 @@ export type ProfileStore = {
 };
 
 export const createProfileStore = () =>
-  createStore<ProfileStore>((set, get) => ({
+  createStore<ProfileStore>((set) => ({
     workspace: null,
     loading: false,
     error: null,
     loadWorkspace: async () => {
-      set({ loading: true, error: null }, false, "profile/loadWorkspace");
+      set({ loading: true, error: null });
       try {
         const workspace = await api.get<WorkspaceSettings>("/workspace");
-        set({ workspace, loading: false }, false, "profile/loadWorkspace-success");
+        set({ workspace, loading: false });
       } catch (e) {
-        const msg = (e instanceof Error ? e.message : String(e)) || "Failed to load workspace";
-        set({ loading: false, error: msg }, false, "profile/loadWorkspace-error");
+        const msg = e instanceof Error ? e.message : String(e);
+        set({ loading: false, error: msg });
         throw e;
       }
     },
     updateWorkspace: async (payload) => {
-      set({ loading: true, error: null }, false, "profile/updateWorkspace");
+      set({ loading: true, error: null });
       try {
         const workspace = await api.put<WorkspaceSettings>("/workspace", payload);
-        set({ workspace, loading: false }, false, "profile/updateWorkspace-success");
+        set({ workspace, loading: false });
       } catch (e) {
-        const msg = (e instanceof Error ? e.message : String(e)) || "Failed to update workspace";
-        set({ loading: false, error: msg }, false, "profile/updateWorkspace-error");
+        const msg = e instanceof Error ? e.message : String(e);
+        set({ loading: false, error: msg });
         throw e;
       }
     },
     setVoiceProfile: async (provider, voiceId) => {
-      set({ loading: true, error: null }, false, "profile/setVoiceProfile");
+      set({ loading: true, error: null });
       try {
-        const res = await api.put<{ voice_profile: WorkspaceSettings["voice_profile"] }>("/workspace/voice-profile", {
-          provider,
-          voice_id: voiceId,
-        });
-        const updated = res.voice_profile;
-        set(
-          (state) => ({
-            workspace: state.workspace
-              ? { ...state.workspace, voice_profile: updated ? { provider: updated.provider, voice_id: updated.voice_id, updated_at: updated.updated_at } : null }
-              : null,
-            loading: false,
-          }),
-          false,
-          "profile/setVoiceProfile-success",
+        const res = await api.put<{ voice_profile: WorkspaceSettings["voice_profile"] }>(
+          "/workspace/voice-profile",
+          { provider, voice_id: voiceId },
         );
+        set((state) => ({
+          workspace: state.workspace
+            ? {
+                ...state.workspace,
+                voice_profile: updated
+                  ? { provider: updated.provider, voice_id: updated.voice_id, updated_at: updated.updated_at }
+                  : null,
+              }
+            : null,
+          loading: false,
+        }));
       } catch (e) {
-        const msg = (e instanceof Error ? e.message : String(e)) || "Failed to set voice profile";
-        set({ loading: false, error: msg }, false, "profile/setVoiceProfile-error");
+        const msg = e instanceof Error ? e.message : String(e);
+        set({ loading: false, error: msg });
         throw e;
       }
     },
     deleteVoiceProfile: async () => {
-      set({ loading: true, error: null }, false, "profile/deleteVoiceProfile");
+      set({ loading: true, error: null });
       try {
         await api.delete("/workspace/voice-profile");
-        set(
-          (state) => ({
-            workspace: state.workspace ? { ...state.workspace, voice_profile: null } : null,
-            loading: false,
-          }),
-          false,
-          "profile/deleteVoiceProfile-success",
-        );
+        set((state) => ({
+          workspace: state.workspace ? { ...state.workspace, voice_profile: null } : null,
+          loading: false,
+        }));
       } catch (e) {
-        const msg = (e instanceof Error ? e.message : String(e)) || "Failed to delete voice profile";
-        set({ loading: false, error: msg }, false, "profile/deleteVoiceProfile-error");
+        const msg = e instanceof Error ? e.message : String(e);
+        set({ loading: false, error: msg });
         throw e;
       }
     },
     rotateApiKeyPlaceholder: () => {
-      // Placeholder for API key rotation workflow.
-      set({ error: "API key rotation is a placeholder in v1 — use the workspace settings endpoint to manage tokens externally." }, false, "profile/rotateApiKeyPlaceholder");
+      set({ error: "API key rotation is a placeholder in v1 — manage externally." });
     },
     clearApiKeyPlaceholder: () => {
-      set({ error: "API key cleared (placeholder) — regenerate externally." }, false, "profile/clearApiKeyPlaceholder");
+      set({ error: "API key cleared (placeholder) — regenerate externally." });
     },
   }));

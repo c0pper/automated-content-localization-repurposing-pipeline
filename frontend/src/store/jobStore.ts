@@ -42,6 +42,7 @@ export type JobStore = {
   cost: CostBreakdown | null;
   costLoading: boolean;
   busy: boolean;
+
   listJobs: (opts?: { status?: string; limit?: number; cursor?: string | null }) => Promise<void>;
   getJob: (jobId: string) => Promise<Job>;
   getGate: (jobId: string) => Promise<GatePayload>;
@@ -57,7 +58,7 @@ export type JobStore = {
 };
 
 export const createJobStore = () =>
-  createStore<JobStore>((set, get) => ({
+  createStore<JobStore>((set) => ({
     jobs: [],
     nextCursor: null,
     loading: false,
@@ -73,7 +74,7 @@ export const createJobStore = () =>
     listJobs: async (opts) => {
       set({ loading: true, error: null }, false, "job/listJobs");
       try {
-        const query: Record<string, string | number | null | undefined> = {
+        const query = {
           limit: opts?.limit ?? 50,
           cursor: opts?.cursor ?? null,
         };
@@ -137,7 +138,7 @@ export const createJobStore = () =>
     confirmSelection: async (jobId, segmentIds, languages, expectedTotalUsd) => {
       set({ busy: true, error: null }, false, "job/confirmSelection");
       try {
-        const job = await api.post<Job>(`/jobs/${jobId}/selection`, {
+        const job = await api.post<Job>(`/jobs/${jobId}/selection", {
           segment_ids: segmentIds,
           languages,
           expected_total_usd: expectedTotalUsd,
@@ -153,7 +154,7 @@ export const createJobStore = () =>
     cancelJob: async (jobId) => {
       set({ busy: true, error: null }, false, "job/cancelJob");
       try {
-        const job = await api.post<Job>(`/jobs/${jobId}/cancel`);
+        const job = await api.post<Job>(`/jobs/${jobId}/cancel");
         set({ selectedJob: job, busy: false }, false, "job/cancelJob-success");
         return job;
       } catch (e) {
@@ -165,7 +166,7 @@ export const createJobStore = () =>
     retryJob: async (jobId) => {
       set({ busy: true, error: null }, false, "job/retryJob");
       try {
-        const job = await api.post<Job>(`/jobs/${jobId}/retry`);
+        const job = await api.post<Job>(`/jobs/${jobId}/retry");
         set({ selectedJob: job, busy: false }, false, "job/retryJob-success");
         return job;
       } catch (e) {
@@ -177,7 +178,7 @@ export const createJobStore = () =>
     deriveJob: async (payload) => {
       set({ busy: true, error: null }, false, "job/deriveJob");
       try {
-        const job = await api.post<Job>(`/jobs/${payload.parentJobId}/derive`, {
+        const job = await api.post<Job>(`/jobs/${payload.parentJobId}/derive", {
           mode: payload.mode,
           target_languages: payload.target_languages,
           lip_sync: payload.lip_sync,
@@ -195,7 +196,7 @@ export const createJobStore = () =>
     rotateReviewLink: async (jobId) => {
       set({ busy: true, error: null }, false, "job/rotateReviewLink");
       try {
-        const res = await api.post<{ review_url: string; rotated_at: string }>(`/jobs/${jobId}/review-link`);
+        const res = await api.post<{ review_url: string; rotated_at: string }>(`/jobs/${jobId}/review-link");
         set({ busy: false }, false, "job/rotateReviewLink-success");
         return res;
       } catch (e) {
