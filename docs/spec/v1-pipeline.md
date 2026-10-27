@@ -165,8 +165,8 @@ Core objects:
   declared Target Languages, lip-sync flag, model overrides, Job Budget, parent link,
   selection, Review Bundle reference, timestamps and failure.
 - **Clip** — a Base Clip. Holds the ordinal, start/end, Hook, social caption, planner
-  Rationale, Jev score and four-signal breakdown, Base Clip asset key, and Localized Clip
-  references. It does not retain the full Transcript.
+  Rationale, Jev score and four-signal breakdown, Base Clip asset key, Localized Clip
+  references, and the Clip's own spoken source text. It does not retain the full Transcript.
 - **Source Language** — `{code, origin}` where origin is `declared`, `detected` or
   `fallback`. `detected_code` is retained for audit when it differs from the effective code.
 - **Selection** — the confirmed rectangular `segment_ids × languages` set, its expected
@@ -197,10 +197,11 @@ Conventions:
   calculations use seconds.
 - IDs: `job_<12 hex>`, `ws_<12 hex>`, `clip_<job>_<ordinal>` internally; `segment_id` is the
   ordinal on the wire. Review tokens are 256-bit URL-safe random values.
-- A Clip retains only its own metadata and asset references. The full Transcript, Source
+- Each Clip retains its own spoken source text as Clip metadata for the lifetime of the
+  Workspace. This is a short excerpt, not the Transcript. The full Transcript, Source
   Recording, caption SRTs, intermediate audio and pre-mux renders are pruned after the
-  Retention Window. A Derived Job that needs spoken source text re-transcribes the selected
-  Base Clips rather than depending on the parent's pruned Transcript.
+  Retention Window. Derived Jobs and later Localization use the retained Clip source text
+  and never need to re-transcribe a Base Clip.
 
 ### 3. Lifecycle and state machine
 
@@ -370,10 +371,9 @@ Selection rules:
 
 Localization is scoped to the confirmed selection only. For each selected Clip × Language:
 
-1. Obtain the spoken source text. Use the Transcript segment when it is still available;
-   if it has been pruned (a late gate confirmation, a delayed retry or a Derived Job),
-   re-transcribe the Base Clip's audio with Whisper, using the known Source Language as a
-   hint. The re-transcription is a paid call and is checked against both budgets.
+1. Read the Clip's retained spoken source text. It is part of the Base Clip metadata, so a
+   late gate confirmation, a delayed retry or a Derived Job does not depend on the pruned
+   Transcript.
 2. Translate the source text for synthesized speech.
 3. Translate the Clip's Hook and social caption into Localized Clip Copy.
 4. Synthesize the localized voice with the Workspace Voice Profile.
@@ -494,22 +494,24 @@ completed cells and only re-runs missing cells.
   failure becomes retryable after the cap or month changes.
 - A Derived Job is created from a parent whose Base Clips are retained: `COMPLETED`,
   `EXPIRED` or `CANCELLED`. A parent with no Base Clips (early failure) is not eligible.
-- `copy` mode refreshes the per-Clip Hook and social caption. It carries forward the parent's
-  LinkedIn and newsletter copy, because the parent Transcript may be pruned. It skips the
-  Selection Gate and commits no localization spend. Fresh long-form copy requires a fresh
-  Job from the Source Recording.
+- `copy` mode refreshes the per-Clip Hook and social caption from the retained Clip source
+  text. It carries forward the parent's LinkedIn and newsletter copy; fresh long-form copy
+  requires a fresh Job from the Source Recording. It skips the Selection Gate and commits no
+  localization spend.
 - `localization` mode re-enters the Selection Gate with the parent's Base Clips and the
   requested Target Languages. It localizes only the new selection and produces a new Review
-  Bundle. It re-transcribes Base Clips only when the parent Transcript is unavailable.
+  Bundle. It uses the retained Clip source text and does not depend on the parent Transcript.
 - Different Base Clips require a fresh Job from the Source Recording.
 - The original Review Bundle is untouched. The Derived Job has its own Job ID, cost ledger,
   events, review token and artifact keys.
 
 ### 12. Retention, purge and deployment
 
-- Delivered Review Bundle assets live for the Workspace lifetime. The Source Recording,
-  Transcript, caption SRTs, intermediate audio and pre-mux renders are pruned after seven
-  days. Expired and cancelled Jobs keep their Base Clips under the same rule.
+- Delivered Review Bundle assets live for the Workspace lifetime. Each Base Clip also
+  retains its spoken source text as Clip metadata for the Workspace lifetime. The Source
+  Recording, full Transcript, caption SRTs, intermediate audio and pre-mux renders are pruned
+  after seven days. Expired and cancelled Jobs keep their Base Clips and source text under
+  the same rule.
 - The retention sweeper is idempotent. A Workspace Purge removes delivered assets
   immediately; backups age out under the separate 30-day backup policy.
 - A Workspace Purge is two-step:
@@ -878,9 +880,9 @@ Postgres schema, expressed as tables and constraints rather than file paths:
   lip_sync, model overrides JSONB, parent_job_id, derived_mode, Job Budget micro-USD,
   expires_at, error code/message, retryable, created/updated timestamps. The confirmed
   selection lives in `selections`; review tokens live in `review_tokens`.
-- `clips` — clip_id PK, job_id FK, ordinal, start/end seconds, Hook, caption, Rationale,
-  selection score, score breakdown JSONB, Base Clip asset key, created_at. Unique
-  `(job_id, ordinal)`.
+- `clips` — clip_id PK, job_id FK, ordinal, start/end seconds, spoken source text, Hook,
+  caption, Rationale, selection score, score breakdown JSONB, Base Clip asset key, created_at.
+  Unique `(job_id, ordinal)`.
 - `clip_localizations` — clip_id FK, language, localized Hook, localized caption, audio key,
   video key, lip_sync flag, status, created_at. Unique `(clip_id, language)`.
 - `selections` — job_id PK/FK, segment_ids JSONB, languages JSONB, expected total micro-USD,
@@ -963,7 +965,8 @@ Use the domain glossary vocabulary in test names.
   cancel during a paid call, cancel versus expiry, selection confirmation versus expiry,
   duplicate webhook, duplicate idempotency key, price change between gate and confirmation,
   outbox ambiguous failure at-most-once behavior, missing Voice Profile, lip-sync failure,
-  budget breach before the next call.
+  budget breach before the next call, and a Derived Job created after the Transcript has been
+  pruned (it must use the retained Clip source text without a new Whisper call).
 - **Security tests** — missing/invalid API key, review token revocation, asset path traversal,
   SSRF URL rejection, object-key prefix rejection, no secrets in events/manifests, presigned
   URL TTL.
@@ -1055,7 +1058,8 @@ files.
    **Blocked by:** 5.
 7. **Planning, Jev and Quality Floor** — OpenRouter planner and copywriter, Jev Decisions API
    per candidate, four 0–4 signals, score math, floor/top-five, rationale, model overrides,
-   cost ledger entries. The Job either has 3–5 scored Clip Candidates or fails.
+   cost ledger entries, and each candidate's spoken source-text excerpt. The Job either has
+   3–5 scored Clip Candidates or fails.
    **Blocked by:** 6.
 8. **Base Clips and review link** — render 9:16 Base Clips with Source Language captions,
    upload to Silo, create the review token, serve the stable review manifest and asset
@@ -1077,8 +1081,9 @@ files.
     incomplete localized artifacts, explicit retry from checkpoint, retryability matrix,
     no final notification on cancel. Jobs can be stopped and transient failures recovered.
     **Blocked by:** 11.
-13. **Derived Jobs** — copy and localization modes, parent eligibility, inherited Base Clips
-    and Source Language, copy scope, localization gate re-entry, new review token/bundle.
+13. **Derived Jobs** — copy and localization modes, parent eligibility, inherited Base Clips,
+    Clip source text and Source Language, copy scope, localization gate re-entry, new review
+    token/bundle. A Derived Job after the Transcript is pruned must not re-transcribe.
     **Blocked by:** 11.
 14. **Workspace Purge and review-link rotation** — dry-run/confirm purge with confirmation
     token, active-Job guard, deletion of Job data/assets/tokens/ledger/events, link rotation
@@ -1091,11 +1096,9 @@ files.
 
 Open spec clarifications for review:
 
-- Derived Jobs after the seven-day Transcript retention: this spec re-transcribes the
-  selected Base Clips to recover spoken text rather than retaining per-Clip transcripts.
-  The alternative is to retain per-Clip source text as Clip metadata for the Workspace
-  lifetime. The chosen approach preserves ADR 0009's retention boundary at the cost of a
-  second short Whisper call per Derived Job.
+- Each Base Clip retains its own spoken source text as Clip metadata for the Workspace
+  lifetime. This is the accepted approach for Derived Jobs and late localization; the full
+  Transcript remains pruned after seven days.
 - Copy-only Derived Jobs refresh the per-Clip Hook and social caption and carry forward the
   parent's LinkedIn/newsletter copy. Fresh long-form copy requires a fresh Job from the
   Source Recording. Confirm this is the intended copy scope.

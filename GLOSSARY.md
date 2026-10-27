@@ -19,7 +19,7 @@ A single pipeline run that turns one Source Recording into a Review Bundle for a
 _Avoid_: Task, run, request
 
 **Derived Job**:
-A new Job created from a parent Job whose Base Clips are still retained — `COMPLETED`, `EXPIRED` or `CANCELLED` — when the Creator requests a different Localization selection or regenerated copy. It reuses the parent's Base Clips; changing the Base Clips requires a fresh Job from the Source Recording. The original Review Bundle remains untouched; a Localization Derived Job re-enters the Selection Gate.
+A new Job created from a parent Job whose Base Clips are still retained — `COMPLETED`, `EXPIRED` or `CANCELLED` — when the Creator requests a different Localization selection or regenerated copy. It reuses the parent's Base Clips and their retained spoken source text; changing the Base Clips requires a fresh Job from the Source Recording. The original Review Bundle remains untouched; a Localization Derived Job re-enters the Selection Gate.
 _Avoid_: Rerun, clone, retry
 
 ### Content
@@ -33,7 +33,7 @@ The remote URL or pre-uploaded Silo object key that identifies a Source Recordin
 _Avoid_: Upload, file, asset URL
 
 **Transcript**:
-The timestamped, word-level text of a Source Recording.
+The timestamped, word-level text of a Source Recording. The full Transcript is pruned after the Retention Window; each Clip retains its own spoken source-text excerpt for later Localization and Derived Jobs.
 _Avoid_: Captions (captions are a rendered artifact derived from the Transcript), subtitles
 
 **Hook**:
@@ -49,7 +49,7 @@ A short, planner-written explanation of why a Clip Candidate exists. It accompan
 _Avoid_: Reasoning, justification, explanation
 
 **Clip**:
-A rendered 9:16 excerpt selected from a Source Recording, identified by a Hook and accompanied by a caption. Clip is the canonical name in prose and code; the public JSON schema calls Clips `segments[]`, which is a wire-format alias, not a separate concept.
+A rendered 9:16 excerpt selected from a Source Recording, identified by a Hook and accompanied by a caption. A Clip retains its own spoken source-text excerpt as metadata for the lifetime of the Workspace; it is not the full Transcript. Clip is the canonical name in prose and code; the public JSON schema calls Clips `segments[]`, which is a wire-format alias, not a separate concept.
 _Avoid_: Segment, short, cut, highlight
 
 **Base Clip**:
@@ -65,7 +65,7 @@ A 0–100 score for a Clip Candidate, derived equally from hook strength, standa
 _Avoid_: Rating, rank
 
 **Review Bundle**:
-The complete set of review material produced by one Job: every Base Clip, the Localized Clips for the confirmed selection (possibly none), and copy — including Localized Clip Copy for each selected language. It excludes the Source Recording, Transcript and working intermediates, and is not a physical archive. Once the Job completes, the Review Bundle is immutable.
+The complete set of review material produced by one Job: every Base Clip, the Localized Clips for the confirmed selection (possibly none), and copy — including Localized Clip Copy for each selected language. It excludes the Source Recording, Transcript, the internal Clip source-text excerpts and working intermediates, and is not a physical archive. Once the Job completes, the Review Bundle is immutable.
 _Avoid_: Delivery payload, output package, export, zip, archive
 
 ### Localization
@@ -169,5 +169,5 @@ The irreversible deletion of every Job, asset, review token, cost entry and even
 _Avoid_: Reset, cleanup, wipe
 
 **Retention Window**:
-The period after which raw and intermediate artifacts are deleted. Delivered Review Bundle assets are retained for the lifetime of the Workspace, until a Workspace Purge.
+The period after which raw and intermediate artifacts are deleted. Delivered Review Bundle assets and each Clip's spoken source-text excerpt are retained for the lifetime of the Workspace, until a Workspace Purge.
 _Avoid_: TTL
