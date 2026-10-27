@@ -165,16 +165,22 @@ Core objects:
   declared Target Languages, lip-sync flag, model overrides, Job Budget, parent link,
   selection, Review Bundle reference, timestamps and failure.
 - **Clip** — a Base Clip. Holds the ordinal, start/end, Hook, social caption, planner
-  Rationale, Jev score and four-signal breakdown, Base Clip asset key, Localized Clip
-  references, and the Clip's own spoken source text. It does not retain the full Transcript.
+  Rationale, Jev score and four-signal breakdown, Base Clip asset key, caption-free Base Clip
+  Master key, Localized Clip references, and the Clip's own spoken source text. It does not
+  retain the full Transcript.
+- **Base Clip Master** — the caption-free 9:16 render of a Clip. It is internal, retained for
+  the Workspace lifetime and the source for both captioned Base Clips and Localized Clips.
 - **Source Language** — `{code, origin}` where origin is `declared`, `detected` or
   `fallback`. `detected_code` is retained for audit when it differs from the effective code.
 - **Selection** — the confirmed rectangular `segment_ids × languages` set, its expected
   total and confirmation timestamp.
-- **Localized Clip** — the dubbed (and optionally lip-synced) video for one Clip × language.
-- **Localized Clip Copy** — the translated Hook and social caption for one Clip × language.
+- **Localized Clip** — the dubbed (and optionally lip-synced) video for one Clip × language,
+  with translated burned-in captions.
+- **Localized Clip Copy** — the translated Hook and social caption for one Clip × language;
+  it is separate from the Clip's burned-in captions.
 - **Review Bundle** — the logical, Job-addressed manifest of Base Clips, Localized Clips,
-  long-form copy and Localized Clip Copy. It is not a zip or a physical archive.
+  long-form copy and Localized Clip Copy. It excludes caption-free masters and is not a zip
+  or a physical archive.
 - **Cost Ledger Entry** — append-only record of one paid provider call.
 - **Job Event** — append-only lifecycle/audit entry.
 - **Notification Outbox Entry** — one signed webhook attempt.
@@ -197,11 +203,15 @@ Conventions:
   calculations use seconds.
 - IDs: `job_<12 hex>`, `ws_<12 hex>`, `clip_<job>_<ordinal>` internally; `segment_id` is the
   ordinal on the wire. Review tokens are 256-bit URL-safe random values.
-- Each Clip retains its own spoken source text as Clip metadata for the lifetime of the
-  Workspace. This is a short excerpt, not the Transcript. The full Transcript, Source
-  Recording, caption SRTs, intermediate audio and pre-mux renders are pruned after the
-  Retention Window. Derived Jobs and later Localization use the retained Clip source text
+- Each Clip retains its own spoken source text and a caption-free Base Clip Master for the
+  lifetime of the Workspace. The text is a short excerpt, not the Transcript; the master is
+  internal and is not exposed by the Review Bundle. The full Transcript, Source Recording,
+  caption SRTs, intermediate audio and pre-mux renders are pruned after the Retention
+  Window. Derived Jobs and later Localization use the retained Clip source text and master,
   and never need to re-transcribe a Base Clip.
+- Base Clips carry Source Language burned-in captions. Localized Clips carry translated
+  burned-in captions synchronized to the localized audio; the localized Hook/caption social
+  copy is separate.
 
 ### 3. Lifecycle and state machine
 
@@ -320,14 +330,15 @@ webhook signature verification is not in v1.
 - The planner and Jev run before any video render. The copywriter generates the long-form
   LinkedIn breakdown and newsletter in the Source Language, plus the per-Clip Hook and
   social caption. Localized Clip Copy is generated later only for the selected languages.
-- Base Clips are rendered from the Source Recording to 9:16 with styled, word-timed
-  captions in the Source Language. v1 uses deterministic center crop; AI subject tracking
-  is out of scope.
-- Base Clips are uploaded to Silo and registered against the Job. Their artifact keys use
-  the Source Language code, not a hard-coded `en`.
-- After all Base Clips are available, the Job creates a review token, computes the
-  selection cost matrix, enters `AWAITING_SELECTION`, and queues the `selection_required`
-  notification. The concurrency slot is released.
+- Each Clip is first rendered as a caption-free 9:16 Base Clip Master. The Base Clip review
+  asset is then rendered from that master with styled, word-timed Source Language captions.
+  v1 uses deterministic center crop; AI subject tracking is out of scope.
+- The Base Clip Master and captioned Base Clip are uploaded to Silo and registered against
+  the Job. Their artifact keys use the Source Language code, not a hard-coded `en`. The
+  master is internal and is not listed in the Review Bundle.
+- After all Base Clips and masters are available, the Job creates a review token, computes
+  the selection cost matrix, enters `AWAITING_SELECTION`, and queues the
+  `selection_required` notification. The concurrency slot is released.
 
 ### 6. Selection Gate
 
@@ -374,25 +385,28 @@ Localization is scoped to the confirmed selection only. For each selected Clip �
 1. Read the Clip's retained spoken source text. It is part of the Base Clip metadata, so a
    late gate confirmation, a delayed retry or a Derived Job does not depend on the pruned
    Transcript.
-2. Translate the source text for synthesized speech.
+2. Translate the source text for synthesized speech and for the burned-in captions.
 3. Translate the Clip's Hook and social caption into Localized Clip Copy.
-4. Synthesize the localized voice with the Workspace Voice Profile.
-5. Mux the localized audio onto the Base Clip video.
-6. If lip-sync is enabled, run Sync Labs on the Base Clip video plus localized audio and
-   replace the Localized Clip with the lip-synced render.
+4. Synthesize the localized voice with the Workspace Voice Profile and obtain character or
+   word alignment from the speech provider.
+5. If lip-sync is enabled, run Sync Labs on the caption-free Base Clip Master plus the
+   localized audio. Otherwise mux the localized audio onto the caption-free master. A
+   lip-sync failure fails the cell; the non-lip-synced render is not exposed as a Localized
+   Clip and is pruned.
+6. Render the translated captions onto the lip-synced or caption-free video using the
+   provider alignment. Captions are burned in after lip-sync, never before, so Sync Labs
+   cannot distort them. The Localized Clip has target-language speech and target-language
+   burned-in captions.
 
 Long-form LinkedIn and newsletter copy stay in the Source Language. Only the per-Clip Hook
 and social caption are localized in v1.
 
 A missing Voice Profile fails the Job with `voice_profile_missing` before TTS. A requested
-lip-sync that cannot run fails the Job with `lip_sync_unavailable` or a provider failure; the
-non-lip-synced render is not exposed as a Localized Clip and is pruned. There is no silent
-fallback.
+lip-sync that cannot run fails the Job with `lip_sync_unavailable` or a provider failure.
+If caption alignment is unavailable, the cell fails with `caption_alignment_unavailable`;
+guessed or proportional timings are not shipped. There is no silent fallback.
 
-v1 Localized Clips reuse the Base Clip video track, so they retain the Base Clip's
-burned-in Source Language captions; re-rendering localized burned-in captions is out of
-scope. The localized Hook and social caption are separate social copy, not burned-in
-subtitles.
+The localized Hook and social caption are separate social copy, not the burned-in captions.
 
 Localized assets and copy are uploaded/recorded per Clip × Language. A later retry reuses
 completed cells and only re-runs missing cells.
@@ -401,7 +415,7 @@ completed cells and only re-runs missing cells.
 
 - Delivery assembles the Review Bundle manifest from the Base Clips, the confirmed
   Localized Clips, long-form copy and Localized Clip Copy. It excludes the Source Recording,
-  Transcript and working intermediates.
+  Transcript, caption-free masters and working intermediates.
 - Copy is available in the manifest and as downloadable Markdown files.
 - `COMPLETED` freezes the bundle. Artifact keys and manifest content do not change in place.
   A correction is a Derived Job with new keys.
@@ -508,16 +522,16 @@ completed cells and only re-runs missing cells.
 ### 12. Retention, purge and deployment
 
 - Delivered Review Bundle assets live for the Workspace lifetime. Each Base Clip also
-  retains its spoken source text as Clip metadata for the Workspace lifetime. The Source
-  Recording, full Transcript, caption SRTs, intermediate audio and pre-mux renders are pruned
-  after seven days. Expired and cancelled Jobs keep their Base Clips and source text under
-  the same rule.
+  retains its spoken source text and a caption-free Base Clip Master for the Workspace
+  lifetime. The Source Recording, full Transcript, caption SRTs, intermediate audio and
+  pre-mux renders are pruned after seven days. Expired and cancelled Jobs keep their Base
+  Clips, source text and masters under the same rule.
 - The retention sweeper is idempotent. A Workspace Purge removes delivered assets
   immediately; backups age out under the separate 30-day backup policy.
 - A Workspace Purge is two-step:
-  1. A dry-run reports Jobs, Base/Localized assets, copy files, review tokens, cost entries,
-     events and bytes, and returns a short-lived, single-use confirmation token bound to the
-     Workspace.
+  1. A dry-run reports Jobs, Base/Localized assets including masters, copy files, review
+     tokens, cost entries, events and bytes, and returns a short-lived, single-use
+     confirmation token bound to the Workspace.
   2. Confirmation carries the Workspace ID and token. The Workspace is locked against new
      submissions, active Jobs must be cancelled first, and the purge deletes all Jobs,
      assets, review tokens, cost entries, events and idempotency records. Workspace Settings,
@@ -881,10 +895,11 @@ Postgres schema, expressed as tables and constraints rather than file paths:
   expires_at, error code/message, retryable, created/updated timestamps. The confirmed
   selection lives in `selections`; review tokens live in `review_tokens`.
 - `clips` — clip_id PK, job_id FK, ordinal, start/end seconds, spoken source text, Hook,
-  caption, Rationale, selection score, score breakdown JSONB, Base Clip asset key, created_at.
-  Unique `(job_id, ordinal)`.
+  caption, Rationale, selection score, score breakdown JSONB, Base Clip asset key, Base Clip
+  Master key, created_at. Unique `(job_id, ordinal)`.
 - `clip_localizations` — clip_id FK, language, localized Hook, localized caption, audio key,
-  video key, lip_sync flag, status, created_at. Unique `(clip_id, language)`.
+  video key with localized burned-in captions, lip_sync flag, status, created_at. Unique
+  `(clip_id, language)`.
 - `selections` — job_id PK/FK, segment_ids JSONB, languages JSONB, expected total micro-USD,
   confirmed_at.
 - `cost_ledger` — id PK, job_id FK, stage, provider, model, units, unit_type, base rate,
@@ -965,8 +980,14 @@ Use the domain glossary vocabulary in test names.
   cancel during a paid call, cancel versus expiry, selection confirmation versus expiry,
   duplicate webhook, duplicate idempotency key, price change between gate and confirmation,
   outbox ambiguous failure at-most-once behavior, missing Voice Profile, lip-sync failure,
-  budget breach before the next call, and a Derived Job created after the Transcript has been
-  pruned (it must use the retained Clip source text without a new Whisper call).
+  missing caption alignment, budget breach before the next call, and a Derived Job created
+  after the Transcript has been pruned (it must use the retained Clip source text without a
+  new Whisper call).
+- **Caption tests** — a fake renderer records its inputs; assert that the Base Clip is
+  rendered with Source Language captions from the master, a Localized Clip uses the master
+  and translated captions, lip-sync runs before caption burn-in, and missing alignment fails
+  without exposing a fallback asset. Assert the master is absent from the Review Bundle but
+  deleted by a purge.
 - **Security tests** — missing/invalid API key, review token revocation, asset path traversal,
   SSRF URL rejection, object-key prefix rejection, no secrets in events/manifests, presigned
   URL TTL.
@@ -999,9 +1020,8 @@ assertions remain valid through the wire alias.
 - Provider-native inbound webhook signatures; v1 uses a shared secret.
 - Application-level envelope encryption or KMS; host-volume encryption plus TLS is the v1
   baseline.
-- Localized burned-in captions are decided separately in issue #1. If that decision is
-  deferred, v1 Localized Clips retain the Base Clip's Source Language captions. Localized
-  Hook/caption social copy is in scope either way.
+- Soft subtitle tracks, caption sidecars or per-platform caption files; v1 burns captions
+  into the video. Localized burned-in captions are in scope for Localized Clips (ADR 0021).
 - AI subject tracking/reframing; v1 uses deterministic center crop.
 - Localized LinkedIn or newsletter copy; they stay in the Source Language.
 - Automatic publishing to social platforms, scheduling or analytics/performance feedback.
@@ -1027,11 +1047,11 @@ state machine without changing existing public behavior (new response fields may
 Proposed tracer-bullet slices, in dependency order. Each slice is intended to be demoable or
 verifiable on its own. They are published as GitHub issues in
 [c0pper/automated-content-localization-repurposing-pipeline](https://github.com/c0pper/automated-content-localization-repurposing-pipeline/issues).
-The issue mapping is: #1 localized-captions decision; #2 domain; #3 durable foundation;
-#4 reliability/cost; #5 workspace admin; #6 submission; #7 ingest; #8 planning; #9 Base Clips;
-#10 Selection Gate; #11 localization; #12 delivery; #13 cancellation/retry; #14 Derived Jobs;
-#15 purge/review-link rotation; #16 deployment hardening. The blocking edges are repeated in
-each issue body.
+The issue mapping is: #1 localized-captions decision (A chosen, closed); #2 domain; #3 durable
+foundation; #4 reliability/cost; #5 workspace admin; #6 submission; #7 ingest; #8 planning;
+#9 Base Clips; #10 Selection Gate; #11 localization; #12 delivery; #13 cancellation/retry;
+#14 Derived Jobs; #15 purge/review-link rotation; #16 deployment hardening. The blocking edges
+are repeated in each issue body.
 
 1. **Domain vocabulary and lifecycle prefactor** — internal Clip vs wire Segment, new
    statuses/stages, Source Language origin, Selection, Localized Clip, Cost Ledger, Job
@@ -1067,21 +1087,21 @@ each issue body.
    cost ledger entries, and each candidate's spoken source-text excerpt. The Job either has
    3–5 scored Clip Candidates or fails.
    **Blocked by:** 6.
-8. **Base Clips and review link** — render 9:16 Base Clips with Source Language captions,
-   upload to Silo, create the review token, serve the stable review manifest and asset
-   redirects. If the captions decision (#1) chooses a caption-free master, retain one per
-   Clip for localized caption rendering. The Creator can watch Base Clips.
-   **Blocked by:** 7; #1 only for the caption-free master branch.
+8. **Base Clips and review link** — render a caption-free 9:16 Base Clip Master per Clip,
+   then render the captioned Base Clip from it with Source Language captions. Upload both,
+   create the review token, serve the stable review manifest and asset redirects. Masters
+   are internal and retained for the Workspace lifetime. The Creator can watch Base Clips.
+   **Blocked by:** 7.
 9. **Selection Gate and expiry** — cost matrix, `GET/POST selection`, price-change and
    empty-selection behavior, `AWAITING_SELECTION`, seven-day expiry, `selection_required` and
    `selection_expired` notifications. The Creator can make and confirm a selection.
    **Blocked by:** 8.
 10. **Localization, copy and lip-sync** — selection-scoped translation, Localized Clip Copy,
-    Voice Profile use, ElevenLabs synthesis, mux, optional Sync Labs replacement, per-cell
-    checkpoints, failure semantics. If the captions decision (#1) chooses localized captions,
-    render from the caption-free master and burn translated captions after lip-sync. Only the
+    Voice Profile use, ElevenLabs synthesis and alignment, optional Sync Labs replacement,
+    translated caption render, per-cell checkpoints, failure semantics. Localized Clips are
+    rendered from the caption-free master and captions are burned in after lip-sync. Only the
     confirmed rectangle is localized.
-    **Blocked by:** 9; #1 for the caption behavior.
+    **Blocked by:** 9.
 11. **Delivery, bundle and notifications** — Review Bundle manifest, Markdown copy, freeze on
     `COMPLETED`, `bundle_ready`, review manifest for partial Jobs, immutable artifact keys.
     The Creator receives a complete review payload.
@@ -1105,9 +1125,12 @@ each issue body.
 
 Resolved clarifications:
 
-- Each Base Clip retains its own spoken source text as Clip metadata for the Workspace
-  lifetime. This is the accepted approach for Derived Jobs and late localization; the full
-  Transcript remains pruned after seven days.
+- Each Base Clip retains its own spoken source text and a caption-free Base Clip Master for
+  the Workspace lifetime. Derived Jobs and late localization use both; the full Transcript
+  remains pruned after seven days.
+- Localized Clips carry translated burned-in captions synchronized to the localized audio.
+  Captions are burned in after lip-sync, from the caption-free master. ADR 0021 records the
+  decision.
 - Inbound webhooks use a shared secret, not provider-native signatures; provider signature
   verification is a hardening follow-up.
 - Workspace Settings and Purge confirmation token are accepted API surfaces; the design
@@ -1118,6 +1141,3 @@ Open clarifications:
 - Copy-only Derived Jobs refresh the per-Clip Hook and social caption and carry forward the
   parent's LinkedIn/newsletter copy. Fresh long-form copy requires a fresh Job from the
   Source Recording. Confirm this is the intended copy scope.
-- Localized burned-in captions: issue #1 decides whether v1 keeps the caption-free master and
-  re-renders Localized Clips with translated captions, or accepts the Source Language caption
-  limitation. The Base Clips and Localization issues are blocked by that decision.

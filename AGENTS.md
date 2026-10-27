@@ -44,8 +44,9 @@ The platform is designed around a multi-agent workflow orchestrated via Python/F
 * **Tasks:**
   * Cut video segments based on `start_time` and `end_time` timestamps provided by `intelligence_agent`.
   * Crop and center subject for vertical (9:16) aspect ratio (TikTok/Reels/Shorts).
-  * Burn in synchronized, styled kinetic captions using timestamped transcript data.
-  * Output rendered MP4 files ready for preview/export.
+  * Render a caption-free 9:16 Base Clip Master for each Clip and retain it for the Workspace lifetime.
+  * Render the Base Clip review asset from the master with synchronized, styled kinetic captions using timestamped transcript data.
+  * Output rendered MP4 files ready for preview/export; the master stays internal and is not part of the Review Bundle.
 
 ---
 
@@ -53,11 +54,12 @@ The platform is designed around a multi-agent workflow orchestrated via Python/F
 * **Role:** Translates clips into target international languages with cloned voice synthesis and optional lip-sync.
 * **Integrations:** OpenRouter API / ElevenLabs API / Sync Labs (or equivalent AI lip-sync model).
 * **Tasks:**
-  * Translate the transcript segment for synthesized speech, and translate the per-Clip Hook and social caption for the social asset. Long-form LinkedIn and newsletter copy stay in the Source Language in v1.
+  * Translate the Clip's retained source text for synthesized speech and for burned-in captions, and translate the per-Clip Hook and social caption for the social asset. Long-form LinkedIn and newsletter copy stay in the Source Language in v1.
   * Clone the creator's voice profile using high-fidelity TTS models.
-  * Synthesize localized voice audio in target language.
-  * (Optional) Run AI lip-syncing model on vertical video to align lip movement with localized audio track.
-  * Merge translated audio track with video asset.
+  * Synthesize localized voice audio in target language and retain the provider's character or word alignment.
+  * Render from the caption-free Base Clip Master, not the captioned Base Clip.
+  * (Optional) Run AI lip-syncing model on the caption-free master to align lip movement with the localized audio track.
+  * Burn translated captions onto the video after lip-sync, synchronized to the localized audio. Merge translated audio track with the master. A missing Voice Profile, lip-sync failure or missing caption alignment fails the Job; there is no silent fallback.
 
 ---
 
@@ -66,9 +68,10 @@ The platform is designed around a multi-agent workflow orchestrated via Python/F
 * **Integrations:** Webhook / Telegram / Slack API / Silo (S3-compatible) storage.
 * **Tasks:**
   * Bundle assets per job:
-    * 3–5 Short-form vertical clips in the Source Language (Base Clips).
-    * 3–5 Short-form vertical clips (Localized/Dubbed).
+    * 3–5 Short-form vertical clips in the Source Language (Base Clips), captioned in the Source Language.
+    * 3–5 Short-form vertical clips (Localized/Dubbed), captioned in the Target Language.
     * Social media copy localized per Clip and Target Language; LinkedIn and newsletter copy in the Source Language.
+    * Caption-free Base Clip Masters are retained for the Workspace lifetime but are not part of the Review Bundle.
   * Upload rendered binaries to the Silo bucket (S3-compatible).
   * Update database status to `Completed`.
   * Send webhook/email notification to creator with access links.
@@ -116,5 +119,5 @@ The platform is designed around a multi-agent workflow orchestrated via Python/F
 ## Security & Usage Guardrails
 1. **API Cost Limits:** Implement strict character/minute limits per job and append every paid call to a Cost Ledger; enforce the USD Job Budget and the monthly Workspace Budget before the next paid call.
 2. **Rate Limiting:** Queue processing jobs using a worker-queue pattern (Celery/Redis), cap concurrent Jobs, and remain within third-party API rate limits.
-3. **Data Retention:** Retain raw intermediate files for 7 days before auto-deleting to minimize storage expenses.
+3. **Data Retention:** Retain raw intermediate files for 7 days before auto-deleting to minimize storage expenses. Base Clips, Localized Clips, per-Clip source text and caption-free Base Clip Masters live for the Workspace lifetime and are removed only by a Workspace Purge.
 4. **Encryption:** Encrypt host volumes and the backup target at rest; use TLS in transit.

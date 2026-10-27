@@ -36,6 +36,10 @@ _Avoid_: Upload, file, asset URL
 The timestamped, word-level text of a Source Recording. The full Transcript is pruned after the Retention Window; each Clip retains its own spoken source-text excerpt for later Localization and Derived Jobs.
 _Avoid_: Captions (captions are a rendered artifact derived from the Transcript), subtitles
 
+**Captions**:
+The styled, timed text burned into a rendered Clip. Base Clips carry Source Language captions; Localized Clips carry translated captions synchronized to the localized audio. Captions are a rendered artifact, not the Transcript.
+_Avoid_: Subtitles, transcript
+
 **Hook**:
 The promise or angle that earns attention in the opening seconds, expressed as a title and opening line.
 _Avoid_: Headline, topic, title
@@ -49,12 +53,16 @@ A short, planner-written explanation of why a Clip Candidate exists. It accompan
 _Avoid_: Reasoning, justification, explanation
 
 **Clip**:
-A rendered 9:16 excerpt selected from a Source Recording, identified by a Hook and accompanied by a caption. A Clip retains its own spoken source-text excerpt as metadata for the lifetime of the Workspace; it is not the full Transcript. Clip is the canonical name in prose and code; the public JSON schema calls Clips `segments[]`, which is a wire-format alias, not a separate concept.
+A rendered 9:16 excerpt selected from a Source Recording, identified by a Hook and accompanied by a caption. A Clip retains its own spoken source-text excerpt and a caption-free Base Clip Master for the lifetime of the Workspace; the excerpt is not the full Transcript and the master is internal. Clip is the canonical name in prose and code; the public JSON schema calls Clips `segments[]`, which is a wire-format alias, not a separate concept.
 _Avoid_: Segment, short, cut, highlight
 
 **Base Clip**:
-A Clip in the Source Language, before Localization. It is the asset at `video_asset_url`; localized variants are not Base Clips.
+A Clip in the Source Language, before Localization. The review asset at `video_asset_url` carries Source Language captions and is rendered from the Clip's caption-free Base Clip Master; localized variants are not Base Clips.
 _Avoid_: English Clip, original clip, source clip
+
+**Base Clip Master**:
+The caption-free 9:16 render of a Clip, retained for the Workspace lifetime as the source for Base Clip and Localized Clip captions. It is internal, excluded from the Review Bundle and removed by a Workspace Purge.
+_Avoid_: Raw clip, clean clip, intermediate
 
 **Quality Floor**:
 The minimum Selection Score a Clip Candidate must reach to be rendered. A Job yields between three and five Clips and fails if fewer than three clear the floor.
@@ -65,7 +73,7 @@ A 0–100 score for a Clip Candidate, derived equally from hook strength, standa
 _Avoid_: Rating, rank
 
 **Review Bundle**:
-The complete set of review material produced by one Job: every Base Clip, the Localized Clips for the confirmed selection (possibly none), and copy — including Localized Clip Copy for each selected language. It excludes the Source Recording, Transcript, the internal Clip source-text excerpts and working intermediates, and is not a physical archive. Once the Job completes, the Review Bundle is immutable.
+The complete set of review material produced by one Job: every Base Clip, the Localized Clips for the confirmed selection (possibly none), and copy — including Localized Clip Copy for each selected language. It excludes the Source Recording, Transcript, the internal Clip source-text excerpts, caption-free Base Clip Masters and working intermediates, and is not a physical archive. Once the Job completes, the Review Bundle is immutable.
 _Avoid_: Delivery payload, output package, export, zip, archive
 
 ### Localization
@@ -83,16 +91,16 @@ The Workspace-configured set of languages a Job may target, defaulting to `en`, 
 _Avoid_: Language list, locale set
 
 **Localization**:
-Producing speech in a Target Language for a Clip, using a synthesized voice clone and optional lip-sync.
+Producing speech and burned-in captions in a Target Language for a Clip, using a synthesized voice clone and optional lip-sync.
 _Avoid_: Translation (that is only the text step), dubbing
 
 **Localized Clip**:
-A Clip whose speech has been replaced with a synthesized performance in a Target Language. A subtitled-only variant is not a Localized Clip. When lip-sync is requested, it applies to this asset; Lip-sync does not create a separate variant.
+A Clip whose speech and burned-in captions have been replaced with a synthesized performance and translated captions in a Target Language. A subtitled-only variant is not a Localized Clip. When lip-sync is requested, it applies before captions are burned in; Lip-sync does not create a separate variant.
 _Avoid_: Dub, translated video
 
 **Localized Clip Copy**:
-The Hook and social caption for a Clip in a Target Language. It ships with the Localized Clip; LinkedIn and newsletter copy remain in the Source Language in v1.
-_Avoid_: Caption, translation, localized copy
+The Hook and social caption for a Clip in a Target Language. It ships with the Localized Clip but is separate from the Clip's burned-in captions; LinkedIn and newsletter copy remain in the Source Language in v1.
+_Avoid_: Captions, translation, localized copy
 
 **Lip-sync**:
 Optional alignment of on-screen mouth movement to a Localized Clip's audio. It is a quality treatment of a Localized Clip, not a separate asset. It is available only for Target Languages the lip-sync provider supports; requesting it for an unsupported language fails the Job.
@@ -169,5 +177,5 @@ The irreversible deletion of every Job, asset, review token, cost entry and even
 _Avoid_: Reset, cleanup, wipe
 
 **Retention Window**:
-The period after which raw and intermediate artifacts are deleted. Delivered Review Bundle assets and each Clip's spoken source-text excerpt are retained for the lifetime of the Workspace, until a Workspace Purge.
+The period after which raw and intermediate artifacts are deleted. Delivered Review Bundle assets, each Clip's spoken source-text excerpt and each Base Clip Master are retained for the lifetime of the Workspace, until a Workspace Purge.
 _Avoid_: TTL
