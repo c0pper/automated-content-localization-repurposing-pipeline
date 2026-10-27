@@ -4,12 +4,14 @@
 the public wire aliases documented in AGENTS.md.
 
 Money is integer micro-USD. Scores are 0-100 floats; Jev signal values are 0-4 floats.
+Internal fields (Transcript, source paths, masters, spoken source text) are marked
+``exclude=True`` so they can never leak through a plain ``model_dump``.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -54,6 +56,7 @@ class Transcript(BaseModel):
     """Word-level transcript produced by the intelligence stage."""
 
     language: str = "en"
+    language_confidence: float = Field(default=1.0, ge=0, le=1)
     duration_seconds: float = Field(ge=0)
     words: list[TranscriptWord] = Field(default_factory=list)
 
@@ -71,6 +74,15 @@ class Transcript(BaseModel):
         return " ".join(words)
 
 
+class ScoreBreakdown(BaseModel):
+    """The four 0-4 Jev signal expected values."""
+
+    hook_strength: float = Field(default=0.0, ge=0, le=4)
+    standalone_clarity: float = Field(default=0.0, ge=0, le=4)
+    emotional_payoff: float = Field(default=0.0, ge=0, le=4)
+    business_fit: float = Field(default=0.0, ge=0, le=4)
+
+
 class ClipCandidate(BaseModel):
     """A high-value moment chosen by the intelligence agent."""
 
@@ -81,6 +93,8 @@ class ClipCandidate(BaseModel):
     caption: str
     rationale: str = ""
     source_text: str = ""
+    selection_score: float = Field(default=0.0, ge=0, le=100)
+    score_breakdown: ScoreBreakdown = Field(default_factory=ScoreBreakdown)
 
     @property
     def duration_seconds(self) -> float:
@@ -93,6 +107,13 @@ class ClipCopy(BaseModel):
     caption: str
 
 
+class LocalizedClipCopy(BaseModel):
+    """Translated Hook and social caption for one Clip-by-Language."""
+
+    hook_title: str
+    caption: str
+
+
 class ContentBundle(BaseModel):
     """Multi-channel copy generated alongside the clips."""
 
@@ -101,12 +122,45 @@ class ContentBundle(BaseModel):
     newsletter: str = ""
 
 
+class CopyOrigin(BaseModel):
+    """Whether each Review Bundle copy asset was generated or carried from a parent."""
+
+    clips: Literal["generated", "parent"] = "generated"
+    linkedin: Literal["generated", "parent"] = "generated"
+    newsletter: Literal["generated", "parent"] = "generated"
+
+
 class SourceLanguage(BaseModel):
     """Effective Source Language plus provenance for audit."""
 
     code: str = Field(min_length=2)
     origin: SourceLanguageOrigin
     detected_code: str | None = None
+
+
+class SourceInput(BaseModel):
+    """A remote URL or a pre-uploaded Silo object key."""
+
+    type: Literal["url", "object"]
+    url: str | None = None
+    key: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> SourceInput:
+        if self.type == "url" and not self.url:
+            raise ValueError("A url source requires 'url'")
+        if self.type == "object" and not self.key:
+            raise ValueError("An object source requires 'key'")
+        return self
+
+    @property
+    def location(self) -> str:
+        return self.url if self.type == "url" else self.key or ""
+
+    def public_dict(self) -> dict[str, str]:
+        if self.type == "url":
+            return {"type": "url", "url": self.url or ""}
+        return {"type": "object", "key": self.key or ""}
 
 
 class Selection(BaseModel):
@@ -118,10 +172,22 @@ class Selection(BaseModel):
     confirmed_at: datetime = Field(default_factory=utc_now)
 
 
+class CostCell(BaseModel):
+    """One cell of the Selection Gate cost matrix."""
+
+    segment_id: int
+    language: str
+    translation_micro_usd: int = Field(ge=0)
+    voice_micro_usd: int = Field(ge=0)
+    lip_sync_micro_usd: int = Field(default=0, ge=0)
+    total_micro_usd: int = Field(ge=0)
+
+
 class LocalizedClip(BaseModel):
     """Per Clip-by-Language result and checkpoint."""
 
     clip_id: str
+    segment_id: int = 0
     language: str
     localized_hook_title: str = ""
     localized_caption: str = ""
@@ -129,6 +195,7 @@ class LocalizedClip(BaseModel):
     video_asset_key: str | None = None
     lip_sync: bool = False
     status: LocalizedClipStatus = LocalizedClipStatus.PENDING
+    error_code: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
 
@@ -145,8 +212,13 @@ class Clip(BaseModel):
     end_time: str
     hook_title: str
     caption: str
+    rationale: str = ""
+    selection_score: float = Field(default=0.0, ge=0, le=100)
+    score_breakdown: ScoreBreakdown = Field(default_factory=ScoreBreakdown)
     video_asset_url: str | None = None
+    video_asset_key: str | None = Field(default=None, exclude=True)
     localized_assets: dict[str, str] = Field(default_factory=dict)
+    localized_copy: dict[str, LocalizedClipCopy] = Field(default_factory=dict)
     source_text: str = Field(default="", exclude=True)
     base_clip_master_key: str | None = Field(default=None, exclude=True)
 
@@ -167,6 +239,7 @@ class CostLedgerEntry(BaseModel):
 
     entry_id: str
     job_id: str
+    workspace_id: str = "ws_default"
     stage: JobStage
     provider: str
     model: str
@@ -185,6 +258,7 @@ class JobEvent(BaseModel):
 
     event_id: str
     job_id: str
+    workspace_id: str = "ws_default"
     type: str
     stage: JobStage | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
@@ -196,6 +270,7 @@ class NotificationOutboxEntry(BaseModel):
 
     event_id: str
     job_id: str
+    workspace_id: str = "ws_default"
     type: NotificationType
     payload: dict[str, Any] = Field(default_factory=dict)
     status: str = "pending"
@@ -215,6 +290,7 @@ class IdempotencyRecord(BaseModel):
     request_hash: str
     response_status: int
     response_body: dict[str, Any] = Field(default_factory=dict)
+    response_headers: dict[str, str] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utc_now)
     expires_at: datetime
 
@@ -224,6 +300,7 @@ class ReviewToken(BaseModel):
 
     token_id: str
     job_id: str
+    workspace_id: str = "ws_default"
     token_hash: str
     created_at: datetime = Field(default_factory=utc_now)
     rotated_at: datetime | None = None
@@ -243,7 +320,7 @@ class VoiceProfile(BaseModel):
 class WorkspaceSettings(BaseModel):
     """Workspace-level defaults and ceilings."""
 
-    workspace_id: str
+    workspace_id: str = "ws_default"
     target_language_allowlist: list[str] = Field(
         default_factory=lambda: ["en", "es", "de", "pt-BR", "fr", "it"]
     )
@@ -253,6 +330,15 @@ class WorkspaceSettings(BaseModel):
     max_concurrent_jobs: int = Field(default=2, ge=1)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+class WorkspaceAuditEntry(BaseModel):
+    audit_id: str
+    workspace_id: str
+    actor: str = "operator"
+    action: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class Purge(BaseModel):
@@ -266,6 +352,7 @@ class Purge(BaseModel):
     expires_at: datetime | None = None
     created_at: datetime = Field(default_factory=utc_now)
     completed_at: datetime | None = None
+    error: str | None = None
 
 
 class Job(BaseModel):
@@ -274,32 +361,79 @@ class Job(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
     job_id: str
+    workspace_id: str = "ws_default"
+    creator_id: str = "cr_default"
     status: JobStatus = JobStatus.RECEIVED
     stage: JobStage | None = None
-    input_url: str
+    input_url: str = ""
+    source: SourceInput | None = None
     source_language: SourceLanguage | None = None
+    declared_source_language: str | None = None
     target_languages: list[str] = Field(default_factory=list)
     lip_sync: bool = False
     model_overrides: dict[str, str] = Field(default_factory=dict)
     job_budget_micro_usd: int = Field(default=50_000_000, ge=0)
     parent_job_id: str | None = None
     derived_mode: DerivedMode | None = None
+    copy_origin: CopyOrigin = Field(default_factory=CopyOrigin)
     expires_at: datetime | None = None
     segments: list[Clip] = Field(default_factory=list)
     content: ContentBundle | None = None
+    content_assets: dict[str, str] = Field(default_factory=dict)
     selection: Selection | None = None
+    selection_matrix: list[CostCell] = Field(default_factory=list)
+    projected_total_micro_usd: int = Field(default=0, ge=0)
+    localized_clips: list[LocalizedClip] = Field(default_factory=list)
+    completed_stages: list[JobStage] = Field(default_factory=list)
     usage: Usage = Field(default_factory=Usage)
     error: str | None = None
     error_code: str | None = None
+    error_message: str | None = None
     retryable: bool = False
+    cancel_requested: bool = False
+    bundle_frozen: bool = False
+    review_token_id: str | None = None
     review_token_hash: str | None = Field(default=None, exclude=True)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+    # Internal checkpoints; excluded from every public serialization.
+    transcript: Transcript | None = Field(default=None, exclude=True)
+    source_path: str | None = Field(default=None, exclude=True)
+    candidates: list[ClipCandidate] = Field(default_factory=list, exclude=True)
+
+    @model_validator(mode="after")
+    def _sync_source(self) -> Job:
+        if self.source is None and self.input_url:
+            if self.input_url.lower().startswith(("http://", "https://", "file://")):
+                self.source = SourceInput(type="url", url=self.input_url)
+            else:
+                self.source = SourceInput(type="object", key=self.input_url)
+        if self.source is not None and not self.input_url:
+            self.input_url = self.source.location
+        return self
 
     @property
     def clips(self) -> list[Clip]:
         """Canonical internal view of the wire ``segments`` list."""
         return self.segments
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.status.is_terminal
+
+    def has_stage(self, stage: JobStage) -> bool:
+        return stage in self.completed_stages
+
+    def mark_stage(self, stage: JobStage) -> None:
+        if stage not in self.completed_stages:
+            self.completed_stages.append(stage)
+
+    def localized(self, segment_id: int, language: str) -> LocalizedClip | None:
+        for item in self.localized_clips:
+            if item.segment_id == segment_id and item.language == language:
+                return item
+        return None
 
     def transition_to(self, target: JobStatus) -> None:
         """Apply a guarded lifecycle transition."""

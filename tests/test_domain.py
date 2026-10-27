@@ -219,3 +219,149 @@ def test_v1_records_are_constructible():
 def test_derived_mode_vocabulary():
     assert DerivedMode.COPY.value == "copy"
     assert DerivedMode.LOCALIZATION.value == "localization"
+
+
+def test_money_is_exact_integer_micro_usd():
+    from app.domain.money import format_usd, parse_usd, with_margin
+
+    assert parse_usd("0.000001") == 1
+    assert parse_usd("50.00") == 50_000_000
+    assert parse_usd("0.1") == 100_000
+    assert format_usd(50_000_000) == "50.00"
+    assert format_usd(1) == "0.000001"
+    assert format_usd(120_000) == "0.12"
+    assert with_margin(10_000, 3, 0.20) == 36_000
+    assert with_margin(10_000, 0, 0.20) == 0
+
+    with pytest.raises(ValueError):
+        parse_usd("-1")
+    with pytest.raises(ValueError):
+        parse_usd("not-money")
+    with pytest.raises(ValueError):
+        format_usd(-1)
+
+
+def test_rate_card_applies_margin_and_fails_closed():
+    from app.domain.money import with_margin
+    from app.domain.rate_card import RateCard
+
+    card = RateCard.default(version="v-test", margin=0.20)
+    assert card.estimate("openrouter", "translation", 100) == with_margin(120, 100, 0.20)
+    assert card.estimate("openrouter", "some-curated-model", 10) == with_margin(100, 10, 0.20)
+
+    with pytest.raises(Exception) as excinfo:
+        card.estimate("unknown", "model", 1)
+    assert getattr(excinfo.value, "code", None) == "rate_missing"
+
+    with pytest.raises(Exception) as excinfo:
+        card.estimate("synclabs", "lipsync-2", 1, unit_type=CostUnitType.CHARACTERS)
+    assert getattr(excinfo.value, "code", None) == "rate_unit_mismatch"
+
+
+def test_jev_score_math_and_quality_floor():
+    from app.domain.models import ClipCandidate
+    from app.domain.scoring import (
+        apply_quality_floor,
+        breakdown_from_distributions,
+        expected_value,
+        score_candidate,
+        selection_score,
+    )
+
+    assert expected_value([0, 0, 0, 0, 1]) == 4.0
+    assert expected_value([1, 0, 0, 0, 0]) == 0.0
+
+    distributions = {
+        "hook_strength": [0, 0, 0, 0.4, 0.6],
+        "standalone_clarity": [0, 0, 0, 0.8, 0.2],
+        "emotional_payoff": [0, 0, 0, 1, 0],
+        "business_fit": [0, 0, 0, 0.6, 0.4],
+    }
+    breakdown = breakdown_from_distributions(distributions)
+    assert breakdown.hook_strength == 3.6
+    assert breakdown.standalone_clarity == 3.2
+    assert breakdown.emotional_payoff == 3.0
+    assert breakdown.business_fit == 3.4
+    assert selection_score(breakdown) == 82.5
+
+    candidate = ClipCandidate(
+        segment_id=1,
+        start_seconds=0,
+        end_seconds=10,
+        hook_title="Hook",
+        caption="Caption",
+    )
+    scored = score_candidate(candidate, distributions)
+    assert scored.selection_score == 82.5
+
+    weak = scored.model_copy(update={"segment_id": 2, "selection_score": 40.0})
+    passing = apply_quality_floor([scored, weak], floor=70, max_clips=5)
+    assert [item.segment_id for item in passing] == [1]
+
+
+def test_selection_rectangle_validation_and_pricing():
+    from app.domain.models import Clip, CostCell
+    from app.domain.rate_card import RateCard
+    from app.domain.selection import (
+        build_cost_matrix,
+        is_empty_selection,
+        price_selection,
+        validate_selection_shape,
+    )
+
+    clip = Clip(
+        segment_id=1,
+        start_time="00:00:00",
+        end_time="00:01:00",
+        hook_title="Hook",
+        caption="Caption",
+        source_text="x" * 100,
+        base_clip_master_key="masters/1.mp4",
+    )
+    job = Job(
+        job_id="job_selection",
+        target_languages=["es", "de"],
+        lip_sync=False,
+        segments=[clip],
+    )
+
+    validate_selection_shape(job, [1], ["es"])
+    validate_selection_shape(job, [], [])
+    assert is_empty_selection([], [])
+
+    with pytest.raises(Exception) as excinfo:
+        validate_selection_shape(job, [2], ["es"])
+    assert getattr(excinfo.value, "code", None) == "invalid_selection"
+
+    with pytest.raises(Exception) as excinfo:
+        validate_selection_shape(job, [1], ["fr"])
+    assert getattr(excinfo.value, "code", None) == "invalid_selection"
+
+    with pytest.raises(Exception) as excinfo:
+        validate_selection_shape(job, [1], [])
+    assert getattr(excinfo.value, "code", None) == "invalid_selection"
+
+    matrix = build_cost_matrix(job, rate_card=RateCard.default())
+    assert len(matrix) == 2
+    assert price_selection(matrix, [1], ["es"]) == matrix[0].total_micro_usd
+    assert price_selection(matrix, [1], ["es", "de"]) == sum(
+        cell.total_micro_usd for cell in matrix
+    )
+    assert price_selection(matrix, [], []) == 0
+    assert all(cell.translation_micro_usd > 0 for cell in matrix)
+
+    lip_sync_job = job.model_copy(update={"lip_sync": True})
+    lip_matrix = build_cost_matrix(lip_sync_job, rate_card=RateCard.default())
+    assert all(cell.lip_sync_micro_usd > 0 for cell in lip_matrix)
+
+    cells = [
+        CostCell(
+            segment_id=1,
+            language="es",
+            translation_micro_usd=10,
+            voice_micro_usd=20,
+            total_micro_usd=30,
+        )
+    ]
+    assert price_selection(cells, [1], ["es"]) == 30
+

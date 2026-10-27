@@ -25,3 +25,6 @@ class InMemoryTaskQueue:
 
     def size(self) -> int:
         return self._queue.qsize()
+
+    async def ping(self) -> bool:
+        return True

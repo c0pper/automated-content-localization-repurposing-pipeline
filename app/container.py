@@ -6,17 +6,29 @@ does not require touching the agents.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from app.adapters.ffmpeg_media import FFmpegMediaProcessor
 from app.adapters.in_memory_queue import InMemoryTaskQueue
-from app.adapters.in_memory_repository import InMemoryJobRepository
+from app.adapters.in_memory_stores import (
+    InMemoryCostLedger,
+    InMemoryIdempotencyStore,
+    InMemoryJobEvents,
+    InMemoryJobRepository,
+    InMemoryLeaseStore,
+    InMemoryOutbox,
+    InMemoryPurgeRepository,
+    InMemoryReviewTokens,
+    InMemoryWorkspaceRepository,
+    SystemClock,
+)
 from app.adapters.local_object_store import LocalObjectStore
-from app.adapters.notifications import LogNotifier, WebhookNotifier
+from app.adapters.notifications import HmacWebhookNotifier, LogNotifier
 from app.adapters.stubs import (
     EchoTranslator,
     SilentVoiceSynthesizer,
     StubClipPlanner,
+    StubClipScorer,
     StubCopywriter,
     StubLipSyncer,
     StubMediaProcessor,
@@ -28,63 +40,234 @@ from app.agents.intelligence_agent import IntelligenceAgent
 from app.agents.localization_agent import LocalizationAgent
 from app.agents.video_editor_agent import VideoEditorAgent
 from app.config import Settings
+from app.domain.rate_card import RateCard
 from app.guardrails import Guardrails
 from app.pipeline.orchestrator import PipelineOrchestrator
 from app.pipeline.retention import RetentionSweeper
-from app.ports import JobRepository, MediaProcessor, Notifier, ObjectStore, TaskQueue
+from app.ports import (
+    Clock,
+    CostLedgerRepository,
+    IdempotencyStore,
+    JobEventRepository,
+    JobRepository,
+    LeaseStore,
+    MediaProcessor,
+    Notifier,
+    ObjectStore,
+    OutboxRepository,
+    PurgeRepository,
+    ReviewTokenRepository,
+    TaskQueue,
+    WorkspaceRepository,
+)
+from app.security.fetch import SafeRemoteFetcher
+from app.services.cost import CostService
+from app.services.derived import DerivedJobService
+from app.services.events import EventService
+from app.services.lifecycle import JobLifecycleService
+from app.services.notifications import NotificationService
+from app.services.purge import PurgeService
+from app.services.review import ReviewService
+from app.services.selection import SelectionService
 from app.services.submission import JobSubmissionService
+from app.services.workspace import WorkspaceService
 from app.workers.runner import QueueWorker
 
 
 @dataclass(slots=True)
 class Container:
     settings: Settings
+    clock: Clock
     repository: JobRepository
+    ledger: CostLedgerRepository
+    event_store: JobEventRepository
+    outbox: OutboxRepository
+    idempotency: IdempotencyStore
+    review_tokens: ReviewTokenRepository
+    workspaces_repository: WorkspaceRepository
+    purges: PurgeRepository
+    leases: LeaseStore
     queue: TaskQueue
     store: ObjectStore
     guardrails: Guardrails
+    cost: CostService
+    events: EventService
+    notifications: NotificationService
+    review: ReviewService
+    workspaces: WorkspaceService
+    selection: SelectionService
+    lifecycle: JobLifecycleService
+    derived: DerivedJobService
+    purge: PurgeService
     submissions: JobSubmissionService
     orchestrator: PipelineOrchestrator
     worker: QueueWorker
     retention: RetentionSweeper
+    dispose: Callable[[], Awaitable[None]] | None = None
 
 
 def build_container(settings: Settings | None = None) -> Container:
     settings = settings or Settings()
+    settings.validate_for_runtime()
     settings.ensure_directories()
 
-    repository: JobRepository = InMemoryJobRepository()
+    clock: Clock = SystemClock()
+
+    repository: JobRepository
+    ledger: CostLedgerRepository
+    event_store: JobEventRepository
+    outbox: OutboxRepository
+    idempotency: IdempotencyStore
+    review_tokens: ReviewTokenRepository
+    workspaces_repository: WorkspaceRepository
+    purges: PurgeRepository
+    leases: LeaseStore
+    dispose: Callable[[], Awaitable[None]] | None = None
+
+    if settings.repository_backend == "memory":
+        repository = InMemoryJobRepository()
+        ledger = InMemoryCostLedger()
+        event_store = InMemoryJobEvents()
+        outbox = InMemoryOutbox()
+        idempotency = InMemoryIdempotencyStore()
+        review_tokens = InMemoryReviewTokens()
+        workspaces_repository = InMemoryWorkspaceRepository()
+        purges = InMemoryPurgeRepository()
+        leases = InMemoryLeaseStore(clock)
+    else:
+        from app.adapters.sql_repository import build_sql_repositories
+
+        (
+            repository,
+            ledger,
+            event_store,
+            outbox,
+            idempotency,
+            review_tokens,
+            workspaces_repository,
+            purges,
+            leases,
+        ) = build_sql_repositories(settings, clock)
+        dispose = repository.dispose  # type: ignore[attr-defined]
+
     queue: TaskQueue = InMemoryTaskQueue()
-    store: ObjectStore = LocalObjectStore(
-        data_dir=settings.data_dir,
-        public_base_url=settings.public_base_url,
-    )
+    if settings.queue_backend == "redis":
+        from app.adapters.redis_queue import RedisTaskQueue
+
+        queue = RedisTaskQueue(settings.redis_url)
+
+    store: ObjectStore
+    if settings.object_store_backend == "silo":
+        from app.adapters.silo_object_store import SiloObjectStore
+
+        store = SiloObjectStore(settings)
+    else:
+        store = LocalObjectStore(
+            data_dir=settings.data_dir,
+            public_base_url=settings.public_base_url,
+        )
+
     guardrails = Guardrails(settings)
 
+    rate_card = (
+        RateCard.from_file(
+            settings.rate_card_path,
+            version=settings.rate_card_version,
+            margin=settings.cost_margin,
+        )
+        if settings.rate_card_path
+        else RateCard.default(
+            version=settings.rate_card_version, margin=settings.cost_margin
+        )
+    )
+
+    cost = CostService(
+        ledger=ledger,
+        workspaces=workspaces_repository,
+        rate_card=rate_card,
+        clock=clock,
+    )
+    events = EventService(events=event_store, clock=clock)
+
+    notifier: Notifier
+    if settings.notification_webhook_url:
+        notifier = HmacWebhookNotifier(
+            settings.notification_webhook_url,
+            secret=settings.notification_signing_secret,
+        )
+    else:
+        notifier = LogNotifier()
+    notifications = NotificationService(outbox=outbox, notifier=notifier, clock=clock)
+
+    review = ReviewService(
+        tokens=review_tokens,
+        clock=clock,
+        secret=settings.notification_signing_secret,
+        api_base_url=settings.api_base_url,
+    )
+    workspaces = WorkspaceService(
+        workspaces=workspaces_repository,
+        cost=cost,
+        clock=clock,
+        settings=settings,
+    )
+    selection = SelectionService(
+        repository=repository,
+        queue=queue,
+        leases=leases,
+        cost=cost,
+        events=events,
+        notifications=notifications,
+        review=review,
+        clock=clock,
+        settings=settings,
+    )
+    lifecycle = JobLifecycleService(
+        repository=repository,
+        queue=queue,
+        leases=leases,
+        store=store,
+        cost=cost,
+        events=events,
+        workspaces=workspaces,
+        clock=clock,
+    )
+
     if settings.media_backend == "ffmpeg":
+        from app.adapters.ffmpeg_media import FFmpegMediaProcessor
+
         media: MediaProcessor = FFmpegMediaProcessor()
     else:
         media = StubMediaProcessor()
 
-    notifier: Notifier
-    if settings.notification_webhook_url:
-        notifier = WebhookNotifier(settings.notification_webhook_url)
-    else:
-        notifier = LogNotifier()
+    transcriber = StubTranscriber()
+    planner = StubClipPlanner()
+    scorer = StubClipScorer()
+    copywriter = StubCopywriter()
+    translator = EchoTranslator()
+    voice = SilentVoiceSynthesizer()
+    lip_syncer = StubLipSyncer() if settings.lip_sync_enabled else None
 
     ingest = IngestAgent(
         media=media,
         store=store,
         guardrails=guardrails,
         workspace_root=settings.workspace_dir,
+        fetcher=SafeRemoteFetcher(
+            allowed_suffixes=settings.input_suffixes,
+            max_bytes=settings.max_source_bytes,
+            timeout=settings.provider_timeout_seconds,
+        ),
+        allow_local_files=settings.environment != "production",
     )
     intelligence = IntelligenceAgent(
-        transcriber=StubTranscriber(),
-        planner=StubClipPlanner(),
-        copywriter=StubCopywriter(),
+        transcriber=transcriber,
+        planner=planner,
+        scorer=scorer,
+        copywriter=copywriter,
+        cost=cost,
         guardrails=guardrails,
-        min_clips=settings.min_clips_per_job,
-        max_clips=settings.max_clips_per_job,
+        settings=settings,
     )
     editor = VideoEditorAgent(
         media=media,
@@ -92,46 +275,114 @@ def build_container(settings: Settings | None = None) -> Container:
         workspace_root=settings.workspace_dir,
     )
     localization = LocalizationAgent(
-        translator=EchoTranslator(),
-        voice=SilentVoiceSynthesizer(),
-        # TODO: replace with the Sync Labs adapter when lip-sync is required.
-        lip_syncer=StubLipSyncer() if settings.lip_sync_enabled else None,
+        translator=translator,
+        voice=voice,
+        lip_syncer=lip_syncer,
         media=media,
         store=store,
+        cost=cost,
+        guardrails=guardrails,
+        settings=settings,
         workspace_root=settings.workspace_dir,
     )
     delivery = DeliveryAgent(
         store=store,
-        notifier=notifier,
         workspace_root=settings.workspace_dir,
     )
 
     orchestrator = PipelineOrchestrator(
         repository=repository,
-        guardrails=guardrails,
+        queue=queue,
+        leases=leases,
+        cost=cost,
+        events=events,
+        notifications=notifications,
+        review=review,
+        selection=selection,
+        lifecycle=lifecycle,
+        workspaces=workspaces,
         ingest=ingest,
         intelligence=intelligence,
         editor=editor,
         localization=localization,
         delivery=delivery,
+        clock=clock,
+        settings=settings,
+    )
+    purge = PurgeService(
+        jobs=repository,
+        ledger=ledger,
+        events=event_store,
+        outbox=outbox,
+        idempotency=idempotency,
+        review_tokens=review_tokens,
+        purges=purges,
+        leases=leases,
+        store=store,
+        clock=clock,
+        settings=settings,
+    )
+    submissions = JobSubmissionService(
+        repository=repository,
+        queue=queue,
+        store=store,
+        workspaces=workspaces,
+        cost=cost,
+        events=events,
+        clock=clock,
+        settings=settings,
+        purge=purge,
+    )
+    derived = DerivedJobService(
+        repository=repository,
+        queue=queue,
+        store=store,
+        copywriter=copywriter,
+        cost=cost,
+        events=events,
+        workspaces=workspaces,
+        selection=selection,
+        clock=clock,
+        settings=settings,
     )
 
     return Container(
         settings=settings,
+        clock=clock,
         repository=repository,
+        ledger=ledger,
+        event_store=event_store,
+        outbox=outbox,
+        idempotency=idempotency,
+        review_tokens=review_tokens,
+        workspaces_repository=workspaces_repository,
+        purges=purges,
+        leases=leases,
         queue=queue,
         store=store,
         guardrails=guardrails,
-        submissions=JobSubmissionService(
-            repository=repository,
-            queue=queue,
-            guardrails=guardrails,
-        ),
+        cost=cost,
+        events=events,
+        notifications=notifications,
+        review=review,
+        workspaces=workspaces,
+        selection=selection,
+        lifecycle=lifecycle,
+        derived=derived,
+        purge=purge,
+        submissions=submissions,
         orchestrator=orchestrator,
         worker=QueueWorker(
             queue=queue,
             orchestrator=orchestrator,
             poll_timeout=settings.worker_poll_seconds,
         ),
-        retention=RetentionSweeper(store, retention_days=settings.retention_days),
+        retention=RetentionSweeper(
+            store,
+            retention_days=settings.retention_days,
+            repository=repository,
+            clock=clock,
+            workspace_root=settings.workspace_dir,
+        ),
+        dispose=dispose,
     )

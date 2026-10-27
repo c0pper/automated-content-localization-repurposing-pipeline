@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
-from app.domain.models import Job
+from app.domain.enums import JobStatus
+from app.domain.models import (
+    CostLedgerEntry,
+    IdempotencyRecord,
+    Job,
+    JobEvent,
+    NotificationOutboxEntry,
+    Purge,
+    ReviewToken,
+    VoiceProfile,
+    WorkspaceAuditEntry,
+    WorkspaceSettings,
+)
 
 
 class JobRepository(Protocol):
@@ -19,21 +30,139 @@ class JobRepository(Protocol):
 
     async def list(self) -> list[Job]: ...
 
+    async def list_for_workspace(
+        self,
+        workspace_id: str,
+        *,
+        status: JobStatus | None = None,
+    ) -> list[Job]: ...
+
+    async def delete_all(self, workspace_id: str) -> None: ...
+
+
+class CostLedgerRepository(Protocol):
+    async def append(self, entry: CostLedgerEntry) -> None: ...
+
+    async def list_for_job(self, job_id: str) -> list[CostLedgerEntry]: ...
+
+    async def list_for_workspace(self, workspace_id: str) -> list[CostLedgerEntry]: ...
+
+    async def delete_all(self, workspace_id: str) -> None: ...
+
+
+class JobEventRepository(Protocol):
+    async def append(self, event: JobEvent) -> None: ...
+
+    async def list_for_job(self, job_id: str) -> list[JobEvent]: ...
+
+    async def delete_all(self, workspace_id: str) -> None: ...
+
+
+class OutboxRepository(Protocol):
+    async def add(self, entry: NotificationOutboxEntry) -> None: ...
+
+    async def list_for_job(self, job_id: str) -> list[NotificationOutboxEntry]: ...
+
+    async def list_pending(self) -> list[NotificationOutboxEntry]: ...
+
+    async def save(self, entry: NotificationOutboxEntry) -> None: ...
+
+    async def delete_all(self, workspace_id: str) -> None: ...
+
+
+class IdempotencyStore(Protocol):
+    async def get(self, workspace_id: str, key: str) -> IdempotencyRecord | None: ...
+
+    async def put(self, record: IdempotencyRecord) -> None: ...
+
+    async def delete(self, workspace_id: str, key: str) -> None: ...
+
+    async def delete_all(self, workspace_id: str) -> None: ...
+
+
+class ReviewTokenRepository(Protocol):
+    async def add(self, token: ReviewToken) -> None: ...
+
+    async def get_by_hash(self, token_hash: str) -> ReviewToken | None: ...
+
+    async def get_for_job(self, job_id: str) -> ReviewToken | None: ...
+
+    async def save(self, token: ReviewToken) -> None: ...
+
+    async def delete_for_job(self, job_id: str) -> None: ...
+
+    async def delete_all(self, workspace_id: str) -> None: ...
+
+
+class WorkspaceRepository(Protocol):
+    async def get_settings(self, workspace_id: str) -> WorkspaceSettings | None: ...
+
+    async def save_settings(self, settings: WorkspaceSettings) -> None: ...
+
+    async def get_voice_profile(self, workspace_id: str) -> VoiceProfile | None: ...
+
+    async def save_voice_profile(self, profile: VoiceProfile) -> None: ...
+
+    async def delete_voice_profile(self, workspace_id: str) -> None: ...
+
+    async def append_audit(self, entry: WorkspaceAuditEntry) -> None: ...
+
+    async def list_audit(self, workspace_id: str) -> list[WorkspaceAuditEntry]: ...
+
+    async def delete_workspace_data(self, workspace_id: str) -> None: ...
+
+
+class PurgeRepository(Protocol):
+    async def add(self, purge: Purge) -> None: ...
+
+    async def get(self, purge_id: str) -> Purge | None: ...
+
+    async def list_for_workspace(self, workspace_id: str) -> list[Purge]: ...
+
+    async def save(self, purge: Purge) -> None: ...
+
+    async def delete_all(self, workspace_id: str) -> None: ...
+
+
+class LeaseStore(Protocol):
+    async def acquire(
+        self,
+        workspace_id: str,
+        job_id: str,
+        *,
+        limit: int,
+        ttl: timedelta,
+    ) -> bool: ...
+
+    async def release(self, workspace_id: str, job_id: str) -> None: ...
+
+    async def count(self, workspace_id: str) -> int: ...
+
+    async def delete_all(self, workspace_id: str) -> None: ...
+
 
 class ObjectStore(Protocol):
-    async def fetch(self, url: str, destination: Path) -> Path:
-        """Download a remote asset (or copy a local one) into the job workspace."""
-        ...
+    async def fetch(self, url: str, destination: Path) -> Path: ...
 
-    async def put(self, source: Path, key: str) -> str:
-        """Upload an artifact and return a URL clients can use."""
-        ...
+    async def put(self, source: Path, key: str) -> str: ...
+
+    async def get(self, key: str, destination: Path) -> Path: ...
 
     async def delete(self, key: str) -> None: ...
 
-    async def prune(self, older_than: timedelta) -> int:
-        """Delete raw/intermediate job workspaces older than the retention window."""
-        ...
+    async def delete_prefix(self, prefix: str) -> int: ...
+
+    async def exists(self, key: str) -> bool: ...
+
+    async def size(self, key: str) -> int: ...
+
+    async def list_keys(self, prefix: str) -> list[str]: ...
+
+    async def copy(self, source_key: str, destination_key: str) -> str: ...
+
+    async def presign(self, key: str, *, ttl_seconds: int) -> str: ...
+
+    async def prune(self, older_than: timedelta) -> int: ...
 
 
 class TaskQueue(Protocol):
@@ -45,6 +174,17 @@ class TaskQueue(Protocol):
 
 
 class Notifier(Protocol):
-    async def notify(self, job: Job, links: Sequence[str]) -> None:
-        """Tell the creator that their review bundle is ready."""
+    async def deliver(
+        self,
+        *,
+        event_id: str,
+        event_type: str,
+        payload: dict,
+        occurred_at: datetime,
+    ) -> None:
+        """Deliver one signed notification. Raises on a failed attempt."""
         ...
+
+
+class Clock(Protocol):
+    def now(self) -> datetime: ...

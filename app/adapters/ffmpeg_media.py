@@ -114,6 +114,34 @@ class FFmpegMediaProcessor:
         )
         return destination
 
+    async def burn_captions(self, video: Path, captions: str, destination: Path) -> Path:
+        subtitle_path = destination.with_suffix(".srt")
+        subtitle_path.write_text(captions, encoding="utf-8")
+        escaped = str(subtitle_path.resolve()).replace("\\", "/").replace(":", "\\:")
+        await self._run(
+            [
+                self._ffmpeg,
+                "-y",
+                "-i",
+                str(video),
+                "-vf",
+                f"subtitles='{escaped}':force_style='FontSize=18,Bold=1,"
+                "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2'",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "20",
+                "-c:a",
+                "copy",
+                "-movflags",
+                "+faststart",
+                str(destination),
+            ]
+        )
+        return destination
+
     async def replace_audio(self, video: Path, audio: Path, destination: Path) -> Path:
         await self._run(
             [

@@ -1,6 +1,8 @@
 """Video Processing & Formatting Agent (``video_editor_agent``).
 
-Cuts the selected moments, re-frames them to 9:16 and burns in kinetic captions.
+Renders a caption-free 9:16 Base Clip Master per Clip, then burns Source Language captions
+into the Base Clip review asset. The master is internal and retained for the Workspace
+lifetime.
 """
 
 from __future__ import annotations
@@ -41,36 +43,57 @@ class VideoEditorAgent:
         edited: list[EditedClip] = []
 
         for candidate in clips:
+            master_path = workspace / f"master_clip_{candidate.segment_id}_{source_language}.mp4"
+            await self._media.render_vertical_clip(
+                source_path,
+                master_path,
+                start_seconds=candidate.start_seconds,
+                end_seconds=candidate.end_seconds,
+                captions=None,
+            )
+            master_key = (
+                f"jobs/{job.job_id}/masters/"
+                f"clip_{candidate.segment_id}_{source_language}.mp4"
+            )
+            await self._store.put(master_path, master_key)
+
             captions = build_srt(
                 transcript.words,
                 clip_start=candidate.start_seconds,
                 clip_end=candidate.end_seconds,
             )
-            destination = workspace / f"clip_{candidate.segment_id}_{source_language}.mp4"
-            await self._media.render_vertical_clip(
-                source_path,
-                destination,
-                start_seconds=candidate.start_seconds,
-                end_seconds=candidate.end_seconds,
-                captions=captions,
-            )
-
-            key = (
+            base_path = workspace / f"clip_{candidate.segment_id}_{source_language}.mp4"
+            await self._media.burn_captions(master_path, captions, base_path)
+            base_key = (
                 f"jobs/{job.job_id}/clips/"
                 f"clip_{candidate.segment_id}_{source_language}.mp4"
             )
-            url = await self._store.put(destination, key)
+            url = await self._store.put(base_path, base_key)
+
             clip = Clip(
                 segment_id=candidate.segment_id,
                 start_time=format_timestamp(candidate.start_seconds),
                 end_time=format_timestamp(candidate.end_seconds),
                 hook_title=candidate.hook_title,
                 caption=candidate.caption,
+                rationale=candidate.rationale,
+                selection_score=candidate.selection_score,
+                score_breakdown=candidate.score_breakdown,
                 video_asset_url=url,
-                source_text=transcript.text_between(
+                video_asset_key=base_key,
+                source_text=candidate.source_text
+                or transcript.text_between(
                     candidate.start_seconds, candidate.end_seconds
                 ),
+                base_clip_master_key=master_key,
             )
-            edited.append(EditedClip(clip=clip, candidate=candidate, path=destination))
+            edited.append(
+                EditedClip(
+                    clip=clip,
+                    candidate=candidate,
+                    path=base_path,
+                    master_path=master_path,
+                )
+            )
 
         return edited

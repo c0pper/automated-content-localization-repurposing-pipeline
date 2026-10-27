@@ -1,19 +1,17 @@
 """Delivery & Orchestration Agent (``delivery_agent``).
 
-Bundles copy files, uploads them and notifies the creator with review links.
+Assembles the Review Bundle manifest, writes Markdown copy files and freezes the bundle.
+Notifications are queued by the orchestrator after the bundle is frozen.
 """
 
 from __future__ import annotations
 
-import csv
-import io
-from collections.abc import Sequence
 from pathlib import Path
 
 from app.agents.base import workspace_for
-from app.domain.artifacts import DeliveryResult, EditedClip, LocalizationResult
+from app.domain.artifacts import DeliveryResult
 from app.domain.models import Job
-from app.ports import Notifier, ObjectStore
+from app.ports import ObjectStore
 
 
 class DeliveryAgent:
@@ -21,20 +19,12 @@ class DeliveryAgent:
         self,
         *,
         store: ObjectStore,
-        notifier: Notifier,
         workspace_root: Path,
     ) -> None:
         self._store = store
-        self._notifier = notifier
         self._workspace_root = workspace_root
 
-    async def run(
-        self,
-        job: Job,
-        *,
-        edited: Sequence[EditedClip],
-        localized: LocalizationResult,
-    ) -> DeliveryResult:
+    async def run(self, job: Job) -> DeliveryResult:
         workspace = workspace_for(self._workspace_root, job.job_id)
         copy_dir = workspace / "copy"
         copy_dir.mkdir(parents=True, exist_ok=True)
@@ -55,36 +45,36 @@ class DeliveryAgent:
                 newsletter_path, f"jobs/{job.job_id}/copy/newsletter.md"
             )
 
-        captions_path = copy_dir / "captions.csv"
-        captions_path.write_text(self._caption_csv(edited), encoding="utf-8")
-        files["captions"] = await self._store.put(
-            captions_path, f"jobs/{job.job_id}/copy/captions.csv"
+            clips_path = copy_dir / "clips.md"
+            clips_path.write_text(self._clips_markdown(job), encoding="utf-8")
+            files["clips"] = await self._store.put(
+                clips_path, f"jobs/{job.job_id}/copy/clips.md"
+            )
+
+        job.content_assets = files
+        job.bundle_frozen = True
+        links = [clip.video_asset_url for clip in job.segments if clip.video_asset_url]
+        links.extend(
+            localized.video_asset_key
+            for localized in job.localized_clips
+            if localized.video_asset_key
         )
-
-        links = [
-            clip.video_asset_url for clip in job.segments if clip.video_asset_url
-        ]
-        for localized_assets in localized.assets.values():
-            links.extend(localized_assets.values())
         links.extend(files.values())
-
-        await self._notifier.notify(job, links)
-        return DeliveryResult(links=links, files=files)
+        return DeliveryResult(links=[link for link in links if link], files=files)
 
     @staticmethod
-    def _caption_csv(edited: Sequence[EditedClip]) -> str:
-        buffer = io.StringIO()
-        writer = csv.writer(buffer)
-        writer.writerow(["segment_id", "start_time", "end_time", "title", "caption"])
-        for edited_clip in edited:
-            clip = edited_clip.clip
-            writer.writerow(
-                [
-                    clip.segment_id,
-                    clip.start_time,
-                    clip.end_time,
-                    clip.hook_title,
-                    clip.caption,
-                ]
-            )
-        return buffer.getvalue()
+    def _clips_markdown(job: Job) -> str:
+        lines = ["# Clip copy", ""]
+        for clip in job.segments:
+            lines.append(f"## {clip.hook_title}")
+            lines.append("")
+            lines.append(clip.caption)
+            lines.append("")
+            for language, copy in sorted(clip.localized_copy.items()):
+                lines.append(f"### {language}")
+                lines.append("")
+                lines.append(f"**{copy.hook_title}**")
+                lines.append("")
+                lines.append(copy.caption)
+                lines.append("")
+        return "\n".join(lines).rstrip() + "\n"
