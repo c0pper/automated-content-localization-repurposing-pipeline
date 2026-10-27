@@ -29,6 +29,15 @@ class MediaProcessor(Protocol):
         """Cut, re-frame to 9:16 and optionally burn in an SRT caption track."""
         ...
 
+    async def burn_captions(
+        self,
+        video: Path,
+        captions: str,
+        destination: Path,
+    ) -> Path:
+        """Burn an SRT caption track into an existing rendered video."""
+        ...
+
     async def replace_audio(self, video: Path, audio: Path, destination: Path) -> Path:
         """Mux a localized audio track onto a rendered clip."""
         ...

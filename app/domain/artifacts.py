@@ -12,7 +12,9 @@ from app.domain.models import (
     Clip,
     ClipCandidate,
     ContentBundle,
+    LocalizedClip,
     MediaProbe,
+    SourceLanguage,
     Transcript,
 )
 
@@ -29,6 +31,7 @@ class IntelligenceResult:
     transcript: Transcript
     clips: list[ClipCandidate]
     content: ContentBundle
+    source_language: SourceLanguage
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,12 +39,14 @@ class EditedClip:
     clip: Clip
     candidate: ClipCandidate
     path: Path
+    master_path: Path
 
 
 @dataclass(frozen=True, slots=True)
 class LocalizationResult:
     assets: dict[int, dict[str, str]]
     characters: int
+    localized_clips: list[LocalizedClip]
 
 
 @dataclass(frozen=True, slots=True)

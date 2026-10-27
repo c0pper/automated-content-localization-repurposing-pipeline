@@ -1,0 +1,239 @@
+name: automated-content-pipeline
+
+x-app-image: &app-image
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: ${PIPELINE_IMAGE:-automated-content-pipeline:latest}
+
+x-app-environment: &app-environment
+  PIPELINE_ENVIRONMENT: production
+  PIPELINE_DATA_DIR: /var/lib/pipeline
+  PIPELINE_WORKSPACE_API_KEY: ${PIPELINE_WORKSPACE_API_KEY:?set PIPELINE_WORKSPACE_API_KEY}
+  PIPELINE_API_BASE_URL: https://${PIPELINE_DOMAIN:?set PIPELINE_DOMAIN}
+  PIPELINE_PUBLIC_BASE_URL: https://s3.${PIPELINE_DOMAIN}/${PIPELINE_SILO_BUCKET:-pipeline}
+  PIPELINE_REPOSITORY_BACKEND: postgres
+  PIPELINE_DATABASE_URL: ${PIPELINE_DATABASE_URL:?set PIPELINE_DATABASE_URL}
+  PIPELINE_QUEUE_BACKEND: redis
+  PIPELINE_REDIS_URL: redis://redis:6379/0
+  PIPELINE_OBJECT_STORE_BACKEND: silo
+  PIPELINE_SILO_ENDPOINT: http://silo:9000
+  PIPELINE_SILO_PUBLIC_ENDPOINT: https://s3.${PIPELINE_DOMAIN}
+  PIPELINE_SILO_BUCKET: ${PIPELINE_SILO_BUCKET:-pipeline}
+  PIPELINE_SILO_REGION: ${PIPELINE_SILO_REGION:-us-east-1}
+  PIPELINE_SILO_ACCESS_KEY: ${PIPELINE_SILO_ACCESS_KEY:?set PIPELINE_SILO_ACCESS_KEY}
+  PIPELINE_SILO_SECRET_KEY: ${PIPELINE_SILO_SECRET_KEY:?set PIPELINE_SILO_SECRET_KEY}
+  PIPELINE_MEDIA_BACKEND: ffmpeg
+  PIPELINE_LIP_SYNC_ENABLED: ${PIPELINE_LIP_SYNC_ENABLED:-false}
+  PIPELINE_WEBHOOK_SECRET: ${PIPELINE_WEBHOOK_SECRET:?set PIPELINE_WEBHOOK_SECRET}
+  PIPELINE_NOTIFICATION_SIGNING_SECRET: ${PIPELINE_NOTIFICATION_SIGNING_SECRET:?set PIPELINE_NOTIFICATION_SIGNING_SECRET}
+  PIPELINE_NOTIFICATION_WEBHOOK_URL: ${PIPELINE_NOTIFICATION_WEBHOOK_URL:-}
+  PIPELINE_CORS_ALLOWED_ORIGINS: ${PIPELINE_CORS_ALLOWED_ORIGINS:-https://${PIPELINE_DOMAIN}}
+  PIPELINE_JOB_BUDGET_USD: ${PIPELINE_JOB_BUDGET_USD:-50.00}
+  PIPELINE_MONTHLY_BUDGET_USD: ${PIPELINE_MONTHLY_BUDGET_USD:-500.00}
+  PIPELINE_MAX_CONCURRENT_JOBS: ${PIPELINE_MAX_CONCURRENT_JOBS:-2}
+  PIPELINE_RETENTION_DAYS: ${PIPELINE_RETENTION_DAYS:-7}
+  PIPELINE_BACKUP_RETENTION_DAYS: ${PIPELINE_BACKUP_RETENTION_DAYS:-30}
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      PIPELINE_DOMAIN: ${PIPELINE_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      silo:
+        condition: service_healthy
+
+  api:
+    <<: *app-image
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      <<: *app-environment
+      PIPELINE_RUN_WORKER: "false"
+    command:
+      - uvicorn
+      - --factory
+      - app.main:create_app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips=*
+    volumes:
+      - pipeline-work:/var/lib/pipeline
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/readyz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      silo:
+        condition: service_healthy
+      silo-init:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *app-image
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      <<: *app-environment
+      PIPELINE_RUN_WORKER: "true"
+    command: ["python", "-m", "app.worker_main"]
+    volumes:
+      - pipeline-work:/var/lib/pipeline
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      silo:
+        condition: service_healthy
+      silo-init:
+        condition: service_completed_successfully
+
+  migrate:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - ./migrations:/migrations:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        for file in /migrations/*.sql; do
+          echo "applying $$file"
+          psql -h postgres -U pipeline -d pipeline -v ON_ERROR_STOP=1 -f "$$file"
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pipeline
+      POSTGRES_USER: pipeline
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - backups:/backups:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pipeline -d pipeline"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  silo:
+    image: pgsty/silo:RELEASE.2026-10-26T00-00-00Z
+    restart: unless-stopped
+    command: ["silo", "server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${PIPELINE_SILO_ACCESS_KEY:?set PIPELINE_SILO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${PIPELINE_SILO_SECRET_KEY:?set PIPELINE_SILO_SECRET_KEY}
+      PIPELINE_SILO_BUCKET: ${PIPELINE_SILO_BUCKET:-pipeline}
+    volumes:
+      - silodata:/data
+      - backups:/backups:ro
+    expose:
+      - "9000"
+      - "9001"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  silo-init:
+    image: pgsty/silo:RELEASE.2026-10-26T00-00-00Z
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mcli alias set local http://silo:9000 "$$PIPELINE_SILO_ACCESS_KEY" "$$PIPELINE_SILO_SECRET_KEY"
+        mcli mb --ignore-existing "local/$$PIPELINE_SILO_BUCKET"
+    environment:
+      PIPELINE_SILO_ACCESS_KEY: ${PIPELINE_SILO_ACCESS_KEY}
+      PIPELINE_SILO_SECRET_KEY: ${PIPELINE_SILO_SECRET_KEY}
+      PIPELINE_SILO_BUCKET: ${PIPELINE_SILO_BUCKET:-pipeline}
+    depends_on:
+      silo:
+        condition: service_healthy
+
+  backup:
+    build:
+      context: .
+      dockerfile: deploy/backup/Dockerfile
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: pipeline
+      PGUSER: pipeline
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      SILO_ENDPOINT: http://silo:9000
+      SILO_ACCESS_KEY: ${PIPELINE_SILO_ACCESS_KEY}
+      SILO_SECRET_KEY: ${PIPELINE_SILO_SECRET_KEY}
+      SILO_BUCKET: ${PIPELINE_SILO_BUCKET:-pipeline}
+      BACKUP_RETENTION_DAYS: ${PIPELINE_BACKUP_RETENTION_DAYS:-30}
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
+      BACKUP_ON_START: ${BACKUP_ON_START:-false}
+    volumes:
+      - backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      silo:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:
+  silodata:
+  caddy_data:
+  caddy_config:
+  pipeline-work:
+  backups:
