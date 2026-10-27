@@ -22,9 +22,10 @@ The platform is designed around a multi-agent workflow orchestrated via Python/F
 
 ### 2. Transcription & Intelligence Agent (`intelligence_agent`)
 * **Role:** Transcribes media and identifies viral/high-value content segments using LLM logic.
-* **Integrations:** OpenAI Whisper API, Anthropic Claude 3.5 Sonnet / OpenAI GPT-4o API.
+* **Integrations:** OpenAI Whisper API; OpenRouter for planning and copy (default model plus selectable models).
 * **Tasks:**
   * Generate timestamped word-level transcript from extracted audio.
+  * Detect the Source Language, or accept a declared override at submission; fall back to English only when detection is inconclusive.
   * Analyze transcript for key value moments:
     * Strong hooks / contrarian takes.
     * Step-by-step frameworks.
@@ -50,9 +51,9 @@ The platform is designed around a multi-agent workflow orchestrated via Python/F
 
 ### 4. Localization & Dubbing Agent (`localization_agent`)
 * **Role:** Translates clips into target international languages with cloned voice synthesis and optional lip-sync.
-* **Integrations:** ElevenLabs API / DeepL API / Sync Labs (or equivalent AI lip-sync model).
+* **Integrations:** OpenRouter API / ElevenLabs API / Sync Labs (or equivalent AI lip-sync model).
 * **Tasks:**
-  * Translate transcript segment into target language (e.g., Spanish, German, Portuguese) preserving domain nuance.
+  * Translate the transcript segment for synthesized speech, and translate the per-Clip Hook and social caption for the social asset. Long-form LinkedIn and newsletter copy stay in the Source Language in v1.
   * Clone the creator's voice profile using high-fidelity TTS models.
   * Synthesize localized voice audio in target language.
   * (Optional) Run AI lip-syncing model on vertical video to align lip movement with localized audio track.
@@ -62,13 +63,13 @@ The platform is designed around a multi-agent workflow orchestrated via Python/F
 
 ### 5. Delivery & Orchestration Agent (`delivery_agent`)
 * **Role:** Assembles generated assets into a final review payload and notifies the user.
-* **Integrations:** Webhook / Telegram / Slack API / Frontend Dashboard Storage (S3).
+* **Integrations:** Webhook / Telegram / Slack API / Silo (S3-compatible) storage.
 * **Tasks:**
   * Bundle assets per job:
-    * 3–5 Short-form vertical clips (English).
+    * 3–5 Short-form vertical clips in the Source Language (Base Clips).
     * 3–5 Short-form vertical clips (Localized/Dubbed).
-    * Social media copy & newsletter text files.
-  * Upload rendered binaries to cloud storage bucket (AWS S3 / Cloudflare R2).
+    * Social media copy localized per Clip and Target Language; LinkedIn and newsletter copy in the Source Language.
+  * Upload rendered binaries to the Silo bucket (S3-compatible).
   * Update database status to `Completed`.
   * Send webhook/email notification to creator with access links.
 
@@ -81,6 +82,7 @@ The platform is designed around a multi-agent workflow orchestrated via Python/F
   "job_id": "job_987654321",
   "status": "PROCESSING",
   "input_url": "https://storage.provider.com/raw_video.mp4",
+  "source_language": "en",
   "target_languages": ["es", "de"],
   "segments": [
     {
@@ -93,6 +95,16 @@ The platform is designed around a multi-agent workflow orchestrated via Python/F
       "localized_assets": {
         "es": "https://storage.provider.com/output/clip_1_es.mp4",
         "de": "https://storage.provider.com/output/clip_1_de.mp4"
+      },
+      "localized_copy": {
+        "es": {
+          "hook_title": "Por qué fallan el 90% de los anuncios B2B SaaS",
+          "caption": "Deja de gastar presupuesto en audiencias amplias..."
+        },
+        "de": {
+          "hook_title": "Warum 90% der B2B-SaaS-Anzeigen scheitern",
+          "caption": "Hör auf, Budget für breite Zielgruppen zu verschwenden..."
+        }
       }
     }
   ]
@@ -102,6 +114,7 @@ The platform is designed around a multi-agent workflow orchestrated via Python/F
 ---
 
 ## Security & Usage Guardrails
-1. **API Cost Limits:** Implement strict character/minute limits per job to prevent runaway cloud usage costs.
-2. **Rate Limiting:** Queue processing jobs using a worker-queue pattern (e.g., Celery/Redis or QStash) to remain within third-party API rate limits.
+1. **API Cost Limits:** Implement strict character/minute limits per job and append every paid call to a Cost Ledger; enforce the USD Job Budget and the monthly Workspace Budget before the next paid call.
+2. **Rate Limiting:** Queue processing jobs using a worker-queue pattern (Celery/Redis), cap concurrent Jobs, and remain within third-party API rate limits.
 3. **Data Retention:** Retain raw intermediate files for 7 days before auto-deleting to minimize storage expenses.
+4. **Encryption:** Encrypt host volumes and the backup target at rest; use TLS in transit.
