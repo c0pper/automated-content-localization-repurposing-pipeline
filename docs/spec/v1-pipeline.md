@@ -999,8 +999,9 @@ assertions remain valid through the wire alias.
 - Provider-native inbound webhook signatures; v1 uses a shared secret.
 - Application-level envelope encryption or KMS; host-volume encryption plus TLS is the v1
   baseline.
-- Localized burned-in captions; v1 Localized Clips retain the Base Clip's Source Language
-  captions. Localized Hook/caption social copy is in scope.
+- Localized burned-in captions are decided separately in issue #1. If that decision is
+  deferred, v1 Localized Clips retain the Base Clip's Source Language captions. Localized
+  Hook/caption social copy is in scope either way.
 - AI subject tracking/reframing; v1 uses deterministic center crop.
 - Localized LinkedIn or newsletter copy; they stay in the Source Language.
 - Automatic publishing to social platforms, scheduling or analytics/performance feedback.
@@ -1024,8 +1025,13 @@ catch-up; the first ticket should be a prefactor that introduces the domain voca
 state machine without changing existing public behavior (new response fields may be added).
 
 Proposed tracer-bullet slices, in dependency order. Each slice is intended to be demoable or
-verifiable on its own. This is the draft for ticket approval, not yet published as ticket
-files.
+verifiable on its own. They are published as GitHub issues in
+[c0pper/automated-content-localization-repurposing-pipeline](https://github.com/c0pper/automated-content-localization-repurposing-pipeline/issues).
+The issue mapping is: #1 localized-captions decision; #2 domain; #3 durable foundation;
+#4 reliability/cost; #5 workspace admin; #6 submission; #7 ingest; #8 planning; #9 Base Clips;
+#10 Selection Gate; #11 localization; #12 delivery; #13 cancellation/retry; #14 Derived Jobs;
+#15 purge/review-link rotation; #16 deployment hardening. The blocking edges are repeated in
+each issue body.
 
 1. **Domain vocabulary and lifecycle prefactor** — internal Clip vs wire Segment, new
    statuses/stages, Source Language origin, Selection, Localized Clip, Cost Ledger, Job
@@ -1063,16 +1069,19 @@ files.
    **Blocked by:** 6.
 8. **Base Clips and review link** — render 9:16 Base Clips with Source Language captions,
    upload to Silo, create the review token, serve the stable review manifest and asset
-   redirects. The Creator can watch Base Clips.
-   **Blocked by:** 7.
+   redirects. If the captions decision (#1) chooses a caption-free master, retain one per
+   Clip for localized caption rendering. The Creator can watch Base Clips.
+   **Blocked by:** 7; #1 only for the caption-free master branch.
 9. **Selection Gate and expiry** — cost matrix, `GET/POST selection`, price-change and
    empty-selection behavior, `AWAITING_SELECTION`, seven-day expiry, `selection_required` and
    `selection_expired` notifications. The Creator can make and confirm a selection.
    **Blocked by:** 8.
 10. **Localization, copy and lip-sync** — selection-scoped translation, Localized Clip Copy,
     Voice Profile use, ElevenLabs synthesis, mux, optional Sync Labs replacement, per-cell
-    checkpoints, failure semantics. Only the confirmed rectangle is localized.
-    **Blocked by:** 9.
+    checkpoints, failure semantics. If the captions decision (#1) chooses localized captions,
+    render from the caption-free master and burn translated captions after lip-sync. Only the
+    confirmed rectangle is localized.
+    **Blocked by:** 9; #1 for the caption behavior.
 11. **Delivery, bundle and notifications** — Review Bundle manifest, Markdown copy, freeze on
     `COMPLETED`, `bundle_ready`, review manifest for partial Jobs, immutable artifact keys.
     The Creator receives a complete review payload.
@@ -1094,18 +1103,21 @@ files.
     startup config validation and deployment smoke tests.
     **Blocked by:** 2, 11.
 
-Open spec clarifications for review:
+Resolved clarifications:
 
 - Each Base Clip retains its own spoken source text as Clip metadata for the Workspace
   lifetime. This is the accepted approach for Derived Jobs and late localization; the full
   Transcript remains pruned after seven days.
+- Inbound webhooks use a shared secret, not provider-native signatures; provider signature
+  verification is a hardening follow-up.
+- Workspace Settings and Purge confirmation token are accepted API surfaces; the design
+  decisions require the behavior, not these exact paths.
+
+Open clarifications:
+
 - Copy-only Derived Jobs refresh the per-Clip Hook and social caption and carry forward the
   parent's LinkedIn/newsletter copy. Fresh long-form copy requires a fresh Job from the
   Source Recording. Confirm this is the intended copy scope.
-- v1 Localized Clips retain the Base Clip's burned-in Source Language captions. Localized
-  burned-in captions are explicitly out of scope; confirm that dubbing plus localized social
-  copy is the intended v1 output.
-- Inbound webhooks use a shared secret, not provider-native signatures; provider signature
-  verification is a hardening follow-up.
-- Workspace Settings and Purge confirmation token are proposed API surfaces; the design
-  decisions require the behavior, not these exact paths.
+- Localized burned-in captions: issue #1 decides whether v1 keeps the caption-free master and
+  re-renders Localized Clips with translated captions, or accepts the Source Language caption
+  limitation. The Base Clips and Localization issues are blocked by that decision.
