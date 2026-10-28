@@ -10,7 +10,8 @@ const config: Config = {
         surface: "var(--surface)",
         "surface-2": "var(--surface-2)",
         border: "var(--border)",
-        accent: "var(--accent)",
+        // Channel form so opacity modifiers (`bg-accent/15`) work.
+        accent: "rgb(var(--accent-rgb) / <alpha-value>)",
         "accent-soft": "var(--accent-soft)",
         "accent-contrast": "var(--accent-contrast)",
         text: "var(--text)",

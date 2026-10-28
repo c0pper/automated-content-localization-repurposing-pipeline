@@ -142,6 +142,13 @@ export const en: Dict = {
   modelOverrides: "Model overrides",
   invalidModel: "One of the selected models is not in the curated list. Pick another model and try again.",
   jobSubmitFailed: "Could not create the job.",
+  // Theme (#23)
+  accentColor: "Accent color",
+  accentColorHint: "Applies instantly across the portal and is remembered on this device.",
+  accentCyan: "Cyan",
+  accentGreen: "Electric green",
+  accentMagenta: "Magenta",
+  accentAmber: "Amber",
 };
 
 const esOverrides: Dict = {
@@ -252,6 +259,13 @@ const esOverrides: Dict = {
   modelOverrides: "Modelos personalizados",
   invalidModel: "Uno de los modelos seleccionados no está en la lista permitida. Elige otro modelo e inténtalo de nuevo.",
   jobSubmitFailed: "No se pudo crear el trabajo.",
+  // Theme (#23)
+  accentColor: "Color de acento",
+  accentColorHint: "Se aplica al instante en todo el portal y se recuerda en este dispositivo.",
+  accentCyan: "Cian",
+  accentGreen: "Verde eléctrico",
+  accentMagenta: "Magenta",
+  accentAmber: "Ámbar",
 };
 
 const deOverrides: Dict = {
@@ -362,6 +376,13 @@ const deOverrides: Dict = {
   modelOverrides: "Modellauswahl",
   invalidModel: "Eines der gewählten Modelle ist nicht in der kuratierten Liste. Wähle ein anderes Modell und versuche es erneut.",
   jobSubmitFailed: "Der Auftrag konnte nicht erstellt werden.",
+  // Theme (#23)
+  accentColor: "Akzentfarbe",
+  accentColorHint: "Wird sofort im gesamten Portal angewendet und auf diesem Gerät gespeichert.",
+  accentCyan: "Cyan",
+  accentGreen: "Elektrisches Grün",
+  accentMagenta: "Magenta",
+  accentAmber: "Bernstein",
 };
 
 export const es: Dict = { ...en, ...esOverrides };
