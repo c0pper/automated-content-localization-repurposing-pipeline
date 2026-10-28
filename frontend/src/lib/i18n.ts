@@ -142,6 +142,12 @@ export const en: Dict = {
   modelOverrides: "Model overrides",
   invalidModel: "One of the selected models is not in the curated list. Pick another model and try again.",
   jobSubmitFailed: "Could not create the job.",
+  // Lip-sync (#29)
+  enableLipSync: "Enable lip-sync",
+  lipSyncHint: "Adds a lip-sync cost to every Clip × Language cell at the Selection Gate. If lip-sync fails, the whole job fails; there is no fallback to dubbed clips without lip-sync.",
+  lipSyncUnavailable: "Lip-sync is not available right now. Turn off lip-sync to submit this job, or try again later.",
+  jobErrorLipSync: "Lip-sync failed, so the whole job stopped. No clips were delivered without lip-sync.",
+  jobErrorCaptionAlignment: "The speech provider returned no caption timing, so the whole job stopped. No clips were delivered without captions.",
   // Theme (#23)
   accentColor: "Accent color",
   accentColorHint: "Applies instantly across the portal and is remembered on this device.",
@@ -332,6 +338,12 @@ const esOverrides: Dict = {
   modelOverrides: "Modelos personalizados",
   invalidModel: "Uno de los modelos seleccionados no está en la lista permitida. Elige otro modelo e inténtalo de nuevo.",
   jobSubmitFailed: "No se pudo crear el trabajo.",
+  // Lip-sync (#29)
+  enableLipSync: "Activar sincronización labial",
+  lipSyncHint: "Añade un coste de sincronización labial a cada celda Clip × Idioma en la Selection Gate. Si la sincronización labial falla, todo el trabajo falla; no hay alternativa con clips doblados sin sincronización labial.",
+  lipSyncUnavailable: "La sincronización labial no está disponible ahora. Desactívala para enviar este trabajo o inténtalo más tarde.",
+  jobErrorLipSync: "La sincronización labial falló, así que todo el trabajo se detuvo. No se entregó ningún clip sin sincronización labial.",
+  jobErrorCaptionAlignment: "El proveedor de voz no devolvió la sincronización de subtítulos, así que todo el trabajo se detuvo. No se entregó ningún clip sin subtítulos.",
   // Theme (#23)
   accentColor: "Color de acento",
   accentColorHint: "Se aplica al instante en todo el portal y se recuerda en este dispositivo.",
@@ -503,6 +515,12 @@ const deOverrides: Dict = {
   modelOverrides: "Modellauswahl",
   invalidModel: "Eines der gewählten Modelle ist nicht in der kuratierten Liste. Wähle ein anderes Modell und versuche es erneut.",
   jobSubmitFailed: "Der Auftrag konnte nicht erstellt werden.",
+  // Lip-sync (#29)
+  enableLipSync: "Lip-Sync aktivieren",
+  lipSyncHint: "Fügt jeder Clip × Sprache-Zelle am Auswahl-Gate Lip-Sync-Kosten hinzu. Schlägt Lip-Sync fehl, schlägt der ganze Auftrag fehl; es gibt keinen Rückfall auf synchronisierte Clips ohne Lip-Sync.",
+  lipSyncUnavailable: "Lip-Sync ist derzeit nicht verfügbar. Deaktiviere Lip-Sync, um diesen Auftrag zu senden, oder versuche es später erneut.",
+  jobErrorLipSync: "Lip-Sync ist fehlgeschlagen, daher wurde der ganze Auftrag gestoppt. Es wurden keine Clips ohne Lip-Sync geliefert.",
+  jobErrorCaptionAlignment: "Der Sprachanbieter hat kein Untertitel-Timing geliefert, daher wurde der ganze Auftrag gestoppt. Es wurden keine Clips ohne Untertitel geliefert.",
   // Theme (#23)
   accentColor: "Akzentfarbe",
   accentColorHint: "Wird sofort im gesamten Portal angewendet und auf diesem Gerät gespeichert.",

@@ -93,6 +93,52 @@ describe("NewJobPage", () => {
     });
   });
 
+  it("lip-sync is off by default and is sent as lip_sync: true when the creator enables it", async () => {
+    const onCreated = vi.fn();
+    mockFetch.mockResolvedValueOnce(jsonResponse(workspace));
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ job_id: "job_2", status: "RECEIVED", created_at: "2026-10-28T00:00:00Z" }, 202),
+    );
+    render(<NewJobPage onCreated={onCreated} />);
+
+    const toggle = (await screen.findByLabelText("Enable lip-sync")) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.change(screen.getByLabelText("Video URL"), {
+      target: { value: "https://example.com/talk.mp4" },
+    });
+    fireEvent.click(screen.getByLabelText("es"));
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "Create job" }));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith("job_2"));
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body).lip_sync).toBe(true);
+  });
+
+  it("explains that lip-sync is unavailable when the backend rejects it with 422 lip_sync_unavailable", async () => {
+    const onCreated = vi.fn();
+    mockFetch.mockResolvedValueOnce(jsonResponse(workspace));
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(
+        { detail: { code: "lip_sync_unavailable", message: "Lip-sync is not enabled", details: {} } },
+        422,
+      ),
+    );
+    render(<NewJobPage onCreated={onCreated} />);
+
+    fireEvent.click(await screen.findByLabelText("Enable lip-sync"));
+    fireEvent.change(screen.getByLabelText("Video URL"), {
+      target: { value: "https://example.com/talk.mp4" },
+    });
+    fireEvent.click(screen.getByLabelText("es"));
+    fireEvent.click(screen.getByRole("button", { name: "Create job" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(
+      "Lip-sync is not available right now. Turn off lip-sync to submit this job, or try again later.",
+    );
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
   it("shows a user-facing message when the backend rejects a model with 422 invalid_model", async () => {
     const onCreated = vi.fn();
     mockFetch.mockResolvedValueOnce(jsonResponse(workspace));

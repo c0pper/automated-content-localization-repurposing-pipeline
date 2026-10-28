@@ -194,6 +194,50 @@ describe("JobDetailPage", () => {
     expect(alert.textContent).toContain("voice_profile_missing");
   });
 
+  it("explains a lip-sync failure on a failed job without implying a fallback", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(
+        makeJob({
+          status: "FAILED",
+          lip_sync: true,
+          error: {
+            code: "lip_sync_unavailable",
+            message: "Lip-sync was requested but no lip-sync provider is configured",
+            retryable: true,
+          },
+        }),
+      ),
+    );
+    render(<JobDetailPage jobId="job_42" />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "Lip-sync failed, so the whole job stopped. No clips were delivered without lip-sync.",
+    );
+    expect(alert.textContent).toContain("lip_sync_unavailable");
+  });
+
+  it("explains a missing caption alignment from the speech provider on a failed job", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(
+        makeJob({
+          status: "FAILED",
+          error: {
+            code: "caption_alignment_unavailable",
+            message: "The speech provider returned no caption alignment",
+            retryable: true,
+          },
+        }),
+      ),
+    );
+    render(<JobDetailPage jobId="job_42" />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "The speech provider returned no caption timing, so the whole job stopped. No clips were delivered without captions.",
+    );
+  });
+
   it("links a job awaiting selection to its Selection Gate page", async () => {
     mockFetch.mockResolvedValueOnce(
       jsonResponse(makeJob({ status: "AWAITING_SELECTION", stage: "selection", selection: null })),

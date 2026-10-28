@@ -94,6 +94,7 @@ export function NewJobPage({ onCreated }: NewJobPageProps) {
       onCreated(accepted.job_id);
     } catch (err) {
       if (isApiError(err) && err.code === "invalid_model") setError(t.invalidModel);
+      else if (isApiError(err) && err.code === "lip_sync_unavailable") setError(t.lipSyncUnavailable);
       else setError(err instanceof Error && err.message ? err.message : t.jobSubmitFailed);
     }
   };
@@ -147,6 +148,22 @@ export function NewJobPage({ onCreated }: NewJobPageProps) {
             {lang}
           </label>
         ))}
+      </fieldset>
+
+      <fieldset className="space-y-2">
+        <legend>{t.lipSync}</legend>
+        <label>
+          <input
+            type="checkbox"
+            checked={draft.lipSync}
+            aria-describedby="lip-sync-hint"
+            onChange={(e) => update({ lipSync: e.target.checked })}
+          />{" "}
+          {t.enableLipSync}
+        </label>
+        <p id="lip-sync-hint" className="text-text-dim text-xs">
+          {t.lipSyncHint}
+        </p>
       </fieldset>
 
       <fieldset className="space-y-2">
