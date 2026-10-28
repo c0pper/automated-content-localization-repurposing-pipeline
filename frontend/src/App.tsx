@@ -6,6 +6,7 @@ import { JobsPage } from "./pages/JobsPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
 import { NewJobPage } from "./pages/NewJobPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { SelectionGatePage } from "./pages/SelectionGatePage";
 import { authStore } from "./store";
 import { parseRoute } from "./lib/route";
 
@@ -48,8 +49,9 @@ export default function App() {
   const page =
     route.page === "newJob" ? (
       <NewJobPage onCreated={(id) => navigate(`/jobs/${id}`)} />
-    ) : route.page === "jobDetail" || route.page === "jobLocalization" ? (
-      // jobLocalization renders the detail page until the Selection Gate page (#28) lands.
+    ) : route.page === "jobLocalization" ? (
+      <SelectionGatePage key={route.jobId} jobId={route.jobId} />
+    ) : route.page === "jobDetail" ? (
       <JobDetailPage jobId={route.jobId} />
     ) : route.page === "jobs" ? (
       <JobsPage />

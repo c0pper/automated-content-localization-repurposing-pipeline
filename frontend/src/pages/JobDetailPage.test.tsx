@@ -194,28 +194,24 @@ describe("JobDetailPage", () => {
     expect(alert.textContent).toContain("voice_profile_missing");
   });
 
-  it("loads the gate for a job awaiting selection and labels the clip column", async () => {
+  it("links a job awaiting selection to its Selection Gate page", async () => {
     mockFetch.mockResolvedValueOnce(
       jsonResponse(makeJob({ status: "AWAITING_SELECTION", stage: "selection", selection: null })),
     );
-    mockFetch.mockResolvedValueOnce(
-      jsonResponse({
-        job_id: "job_42",
-        status: "AWAITING_SELECTION",
-        expires_at: null,
-        source_language: null,
-        target_languages: ["es", "de"],
-        lip_sync: false,
-        segments: [],
-        cost_matrix: [],
-        projected_total_usd: "2.500000",
-      }),
-    );
     render(<JobDetailPage jobId="job_42" />);
 
-    expect(await screen.findByText("2.500000")).toBeTruthy();
-    expect(mockFetch.mock.calls[1][0]).toEqual(expect.stringContaining("/api/jobs/job_42/selection"));
-    expect(screen.getByRole("columnheader", { name: "Segment" })).toBeTruthy();
+    const link = await screen.findByRole("link", { name: "Open Selection Gate" });
+    expect(link.getAttribute("href")).toBe("#/jobs/job_42/localization");
+    expect(screen.getByRole("region", { name: "Selection Gate" }).textContent).toContain(
+      "waiting for you to choose",
+    );
+  });
+
+  it("does not offer the Selection Gate once the job has moved on", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(makeJob()));
+    render(<JobDetailPage jobId="job_42" />);
+    await screen.findByRole("article", { name: "Segment 7" });
+    expect(screen.queryByRole("link", { name: "Open Selection Gate" })).toBeNull();
   });
 
   it("shows a not-found message when the job does not exist", async () => {

@@ -10,7 +10,6 @@ import type { Dict } from "@/lib/i18n";
 export function JobDetailPage({ jobId }: { jobId: string }) {
   const t = useTranslation();
   const selectedJob = useStore(jobStore, (s) => s.selectedJob);
-  const gate = useStore(jobStore, (s) => s.gate);
   // Id whose load attempt has finished; guards against showing a stale job.
   const [loadedId, setLoadedId] = useState<string | null>(null);
 
@@ -19,11 +18,7 @@ export function JobDetailPage({ jobId }: { jobId: string }) {
     void (async () => {
       if (!jobId) return;
       try {
-        const loaded = await jobStore.getState().getJob(jobId);
-        // The Selection Gate only exists while the Job awaits selection (409 otherwise).
-        if (loaded.status === "AWAITING_SELECTION") {
-          try { await jobStore.getState().getGate(jobId); } catch { /* gate optional here */ }
-        }
+        await jobStore.getState().getJob(jobId);
       } catch { /* rendered as not found below */ }
       if (active) setLoadedId(jobId);
     })();
@@ -160,42 +155,15 @@ export function JobDetailPage({ jobId }: { jobId: string }) {
 
       {/* Selection Gate or Completed state */}
       {job.status === "AWAITING_SELECTION" ? (
-        <section className="bg-surface rounded-xl border border-border p-6">
-          <h3 className="font-semibold text-sm">Selection Gate</h3>
-          <p className="text-text-dim text-sm mb-4">
-            Select clips and target languages to localize. Costs use the workspace rate card.
-          </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-text">
-              <thead>
-                <tr className="text-text-dim border-b border-border bg-surface-2 sticky top-0">
-                  <th>{t.segment}</th>
-                  {job.target_languages.map((lang) => (
-                    <th key={lang} className="text-left font-medium">{lang}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {job.segments.map((seg) => (
-                  <tr key={seg.segment_id} className="border-b border-border bg-surface-2">
-                    <td className="font-medium text-text">
-                      {seg.segment_id}: {seg.hook_title}
-                    </td>
-                    {job.target_languages.map((lang) => (
-                      <td key={lang} className="text-text-dim">
-                        {seg.segment_id} × {lang}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {gate && (
-            <div className="mt-4 bg-surface-2 rounded-lg p-3 text-xs text-text-dim">
-              <strong>{t.totalProjected}:</strong> {gate.projected_total_usd}
-            </div>
-          )}
+        <section aria-labelledby="job-gate" className="bg-surface rounded-xl border border-border p-6 space-y-2">
+          <h3 id="job-gate" className="font-semibold text-sm">{t.gateTitle}</h3>
+          <p className="text-text-dim text-sm">{t.gateAwaiting}</p>
+          <a
+            href={`#/jobs/${encodeURIComponent(job.job_id)}/localization`}
+            className="inline-block rounded-lg bg-accent text-accent-contrast px-4 py-2 font-semibold"
+          >
+            {t.openGate}
+          </a>
         </section>
       ) : job.review_url ? (
         <section className="bg-surface rounded-xl border border-border p-6">
