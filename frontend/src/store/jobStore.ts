@@ -1,11 +1,14 @@
 /**
  * Job domain Zustand slice.
  * Wraps /api/jobs endpoints: list, get, create, cancel, retry, derive, selection confirm.
+ * Mutations reuse their Idempotency-Key when the same intent is retried (ADR-0019).
  */
 import { createStore } from "zustand";
-import { api } from "@/lib/api";
+import { api, isApiError, isSelectionPriceChanged } from "@/lib/api";
+import { createIntentKeys } from "@/lib/idempotency";
 import type {
   CostBreakdown,
+  CostCellTotal,
   GatePayload,
   Job,
   JobAccepted,
@@ -34,6 +37,7 @@ export type JobStore = {
   jobs: JobSummary[];
   nextCursor: string | null;
   loading: boolean;
+  /** Error code of the last failed list/submit (`network_error` when no response). */
   error: string | null;
   selectedJob: Job | null;
   selectedLoading: boolean;
@@ -49,6 +53,10 @@ export type JobStore = {
   getGate: (jobId: string) => Promise<GatePayload>;
   getCost: (jobId: string) => Promise<CostBreakdown>;
   submitJob: (payload: SubmitJobPayload) => Promise<JobAccepted>;
+  /**
+   * Confirms a selection. On 409 `selection_price_changed` the gate is
+   * reloaded with the new prices before the error is rethrown.
+   */
   confirmSelection: (jobId: string, segmentIds: number[], languages: string[], expectedTotalUsd: string) => Promise<Job>;
   cancelJob: (jobId: string) => Promise<Job>;
   retryJob: (jobId: string) => Promise<Job>;
@@ -65,8 +73,31 @@ function withReviewUrl(selectedJob: Job | null, jobId: string, reviewUrl: string
     : { busy: false };
 }
 
-export const createJobStore = () =>
-  createStore<JobStore>((set, get) => ({
+/**
+ * After a 409 `selection_price_changed` the server's prices win: reload the
+ * full gate (with the translation/voice/lip-sync breakdown). If that fails,
+ * patch the cell totals from the error details so the live total still
+ * reflects the new prices.
+ */
+function repricedGate(gate: GatePayload, costMatrix: CostCellTotal[]): GatePayload {
+  const totals = new Map(costMatrix.map((c) => [`${c.segment_id}:${c.language}`, c.total_usd]));
+  return {
+    ...gate,
+    cost_matrix: gate.cost_matrix.map((c) => ({
+      ...c,
+      total_usd: totals.get(`${c.segment_id}:${c.language}`) ?? c.total_usd,
+    })),
+  };
+}
+
+export const createJobStore = () => {
+  // Retry-safe Idempotency-Keys per in-flight intent (ADR-0019).
+  const withIntentKey = createIntentKeys();
+  // Bumped by every list that replaces `jobs`; a page fetched under an older
+  // generation (e.g. "load more" for a previous status filter) is discarded.
+  let listGeneration = 0;
+
+  return createStore<JobStore>((set, get) => ({
     jobs: [],
     nextCursor: null,
     loading: false,
@@ -80,6 +111,8 @@ export const createJobStore = () =>
     busy: false,
 
     listJobs: async (opts) => {
+      const generation = opts?.append ? listGeneration : ++listGeneration;
+      const stale = () => generation !== listGeneration;
       set({ loading: true, error: null });
       try {
         const query: { limit: number; cursor: string | null; status?: string } = {
@@ -88,13 +121,15 @@ export const createJobStore = () =>
         };
         if (opts?.status) query.status = opts.status;
         const res = await api.get<JobList>("/jobs", { query });
+        if (stale()) return;
         set((s) => ({
           jobs: opts?.append ? [...s.jobs, ...res.items] : res.items,
           nextCursor: res.next_cursor,
           loading: false,
         }));
       } catch (e) {
-        set({ loading: false, error: e instanceof Error ? e.message : "Failed to load jobs" });
+        if (stale()) return;
+        set({ loading: false, error: isApiError(e) ? e.code : "network_error" });
         throw e;
       }
     },
@@ -138,26 +173,36 @@ export const createJobStore = () =>
     submitJob: async (payload) => {
       set({ busy: true, error: null });
       try {
-        const accepted = await api.post<JobAccepted>("/jobs", payload);
+        const accepted = await withIntentKey("submit", payload, (idempotencyKey) =>
+          api.post<JobAccepted>("/jobs", payload, { idempotencyKey }),
+        );
         set({ busy: false });
         return accepted;
       } catch (e) {
-        set({ busy: false, error: e instanceof Error ? e.message : "Failed to submit job" });
+        set({ busy: false, error: isApiError(e) ? e.code : "network_error" });
         throw e;
       }
     },
 
     confirmSelection: async (jobId, segmentIds, languages, expectedTotalUsd) => {
       set({ busy: true, error: null });
+      const body = { segment_ids: segmentIds, languages, expected_total_usd: expectedTotalUsd };
       try {
-        const job = await api.post<Job>(`/jobs/${jobId}/selection`, {
-          segment_ids: segmentIds,
-          languages,
-          expected_total_usd: expectedTotalUsd,
-        });
+        const job = await withIntentKey(`confirm:${jobId}`, body, (idempotencyKey) =>
+          api.post<Job>(`/jobs/${jobId}/selection`, body, { idempotencyKey }),
+        );
         set({ selectedJob: job, busy: false });
         return job;
       } catch (e) {
+        const changed = isSelectionPriceChanged(e);
+        if (changed) {
+          try {
+            await get().getGate(jobId);
+          } catch {
+            const gate = get().gate;
+            if (gate?.job_id === jobId) set({ gate: repricedGate(gate, changed.costMatrix) });
+          }
+        }
         set({ busy: false });
         throw e;
       }
@@ -166,7 +211,9 @@ export const createJobStore = () =>
     cancelJob: async (jobId) => {
       set({ busy: true, error: null });
       try {
-        const job = await api.post<Job>(`/jobs/${jobId}/cancel`);
+        const job = await withIntentKey(`cancel:${jobId}`, null, (idempotencyKey) =>
+          api.post<Job>(`/jobs/${jobId}/cancel`, undefined, { idempotencyKey }),
+        );
         set({ selectedJob: job, busy: false });
         return job;
       } catch (e) {
@@ -178,7 +225,9 @@ export const createJobStore = () =>
     retryJob: async (jobId) => {
       set({ busy: true, error: null });
       try {
-        const job = await api.post<Job>(`/jobs/${jobId}/retry`);
+        const job = await withIntentKey(`retry:${jobId}`, null, (idempotencyKey) =>
+          api.post<Job>(`/jobs/${jobId}/retry`, undefined, { idempotencyKey }),
+        );
         set({ selectedJob: job, busy: false });
         return job;
       } catch (e) {
@@ -189,14 +238,17 @@ export const createJobStore = () =>
 
     deriveJob: async (payload) => {
       set({ busy: true, error: null });
+      const body = {
+        mode: payload.mode,
+        target_languages: payload.target_languages,
+        lip_sync: payload.lip_sync,
+        model_overrides: payload.model_overrides,
+        refresh_long_form: payload.refresh_long_form,
+      };
       try {
-        const job = await api.post<Job>(`/jobs/${payload.parentJobId}/derive`, {
-          mode: payload.mode,
-          target_languages: payload.target_languages,
-          lip_sync: payload.lip_sync,
-          model_overrides: payload.model_overrides,
-          refresh_long_form: payload.refresh_long_form,
-        });
+        const job = await withIntentKey(`derive:${payload.parentJobId}`, body, (idempotencyKey) =>
+          api.post<Job>(`/jobs/${payload.parentJobId}/derive`, body, { idempotencyKey }),
+        );
         set({ selectedJob: job, busy: false });
         return job;
       } catch (e) {
@@ -208,7 +260,11 @@ export const createJobStore = () =>
     rotateReviewLink: async (jobId) => {
       set({ busy: true, error: null });
       try {
-        const res = await api.post<{ review_url: string; rotated_at: string }>(`/jobs/${jobId}/review-link`);
+        const res = await withIntentKey(`rotate-review:${jobId}`, null, (idempotencyKey) =>
+          api.post<{ review_url: string; rotated_at: string }>(`/jobs/${jobId}/review-link`, undefined, {
+            idempotencyKey,
+          }),
+        );
         set(withReviewUrl(get().selectedJob, jobId, res.review_url));
         return res;
       } catch (e) {
@@ -220,7 +276,9 @@ export const createJobStore = () =>
     revokeReviewLink: async (jobId) => {
       set({ busy: true, error: null });
       try {
-        await api.delete(`/jobs/${jobId}/review-link`);
+        await withIntentKey(`revoke-review:${jobId}`, null, (idempotencyKey) =>
+          api.delete(`/jobs/${jobId}/review-link`, { idempotencyKey }),
+        );
         set(withReviewUrl(get().selectedJob, jobId, null));
       } catch (e) {
         set({ busy: false });
@@ -244,3 +302,4 @@ export const createJobStore = () =>
       });
     },
   }));
+};
