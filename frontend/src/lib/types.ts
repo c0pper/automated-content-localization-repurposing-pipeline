@@ -89,7 +89,7 @@ export interface JobSummary {
   stage: string | null;
   created_at: string | null;
   expires_at: string | null;
-  review_url: string;
+  review_url: string | null;
 }
 
 export type JobStatus = Job["status"];
