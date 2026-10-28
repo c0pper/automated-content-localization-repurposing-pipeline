@@ -10,6 +10,16 @@ import type { ApiErrorDetail } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
+/**
+ * Stable, cookie-authenticated URL for a Job asset. The backend answers with a
+ * 302 to a short-lived presigned URL, so the link never goes stale the way a
+ * raw object-store URL does. Asset ids: `base_{segment}`,
+ * `clip_{segment}_{lang}`, `copy_linkedin`, `copy_newsletter`.
+ */
+export function jobAssetUrl(jobId: string, assetId: string): string {
+  return `${API_BASE}/jobs/${encodeURIComponent(jobId)}/assets/${encodeURIComponent(assetId)}`;
+}
+
 let _csrfCounter = 0;
 function generateIdempotencyKey(): string {
   _csrfCounter += 1;

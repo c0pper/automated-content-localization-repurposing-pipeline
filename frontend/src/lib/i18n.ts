@@ -121,6 +121,26 @@ export const en: Dict = {
   apiKeyRotationPlaceholder: "Placeholder rotation triggered — regenerate the workspace token externally.",
   apiKeyClearPlaceholderMessage: "Placeholder clear triggered — the key was not changed.",
   jobBudgetOverview: "Job budget overview",
+
+  // Job details (issue #27)
+  segment: "Segment",
+  status: "Status",
+  stage: "Stage",
+  created: "Created",
+  jobNotFound: "Job not found.",
+  baseClip: "Base clip",
+  localizedClip: "Localized clip ({{lang}})",
+  noLocalizedClips: "No localized clips yet",
+  localizedCopy: "Localized copy",
+  longFormCopy: "Long-form copy (Source Language)",
+  linkedinPost: "LinkedIn post",
+  newsletter: "Newsletter",
+  selectedClips: "Clips",
+  selectedLanguages: "Languages",
+  confirmedTotal: "Confirmed total",
+  confirmedAt: "Confirmed at",
+  projectedLocalization: "Projected localization",
+  jobError: "Job failed",
 };
 
 const esOverrides: Dict = {
@@ -210,6 +230,26 @@ const esOverrides: Dict = {
   apiKeyRotationPlaceholder: "Rotación de marcador activada — regenera el token del workspace externamente.",
   apiKeyClearPlaceholderMessage: "Borrado de marcador activado — la clave no se ha modificado.",
   jobBudgetOverview: "Resumen del presupuesto por trabajo",
+
+  // Job details (issue #27)
+  segment: "Segmento",
+  status: "Estado",
+  stage: "Etapa",
+  created: "Creado",
+  jobNotFound: "Trabajo no encontrado.",
+  baseClip: "Clip base",
+  localizedClip: "Clip localizado ({{lang}})",
+  noLocalizedClips: "Aún no hay clips localizados",
+  localizedCopy: "Texto localizado",
+  longFormCopy: "Texto largo (idioma de origen)",
+  linkedinPost: "Publicación de LinkedIn",
+  newsletter: "Boletín",
+  selectedClips: "Clips",
+  selectedLanguages: "Idiomas",
+  confirmedTotal: "Total confirmado",
+  confirmedAt: "Confirmado el",
+  projectedLocalization: "Localización prevista",
+  jobError: "El trabajo falló",
   voiceProfileMissing: "Falta el perfil de voz — la localización fallará.",
 };
 
@@ -300,6 +340,26 @@ const deOverrides: Dict = {
   apiKeyRotationPlaceholder: "Platzhalter-Rotation ausgelöst — generiere das Workspace-Token extern neu.",
   apiKeyClearPlaceholderMessage: "Platzhalter-Löschung ausgelöst — der Schlüssel wurde nicht geändert.",
   jobBudgetOverview: "Übersicht Auftragsbudget",
+
+  // Job details (issue #27)
+  segment: "Segment",
+  status: "Status",
+  stage: "Phase",
+  created: "Erstellt",
+  jobNotFound: "Auftrag nicht gefunden.",
+  baseClip: "Basis-Clip",
+  localizedClip: "Lokalisierter Clip ({{lang}})",
+  noLocalizedClips: "Noch keine lokalisierten Clips",
+  localizedCopy: "Lokalisierter Text",
+  longFormCopy: "Langtext (Ausgangssprache)",
+  linkedinPost: "LinkedIn-Beitrag",
+  newsletter: "Newsletter",
+  selectedClips: "Clips",
+  selectedLanguages: "Sprachen",
+  confirmedTotal: "Bestätigte Summe",
+  confirmedAt: "Bestätigt am",
+  projectedLocalization: "Prognostizierte Lokalisierung",
+  jobError: "Auftrag fehlgeschlagen",
   voiceProfileMissing: "Stimmprofil fehlt — Lokalisierung schlägt fehl.",
 };
 
