@@ -29,10 +29,10 @@ export const createThemeStore = () =>
           isDark: true,
           setTheme: (name) => {
             const theme = THEMES.find((t) => t.name === name) ?? THEMES[0];
-            set({ theme, accent: theme.accent }, false, "theme/setTheme");
+            set({ theme, accent: theme.accent });
           },
           toggleDarkMode: () =>
-            set((state) => ({ isDark: !state.isDark }), false, "theme/toggleDarkMode"),
+            set((state) => ({ isDark: !state.isDark })),
         }),
         { name: "creator-theme-storage" },
       ),

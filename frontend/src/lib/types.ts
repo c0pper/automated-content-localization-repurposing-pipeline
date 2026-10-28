@@ -92,6 +92,8 @@ export interface JobSummary {
   review_url: string;
 }
 
+export type JobStatus = Job["status"];
+
 export interface JobList {
   items: JobSummary[];
   next_cursor: string | null;

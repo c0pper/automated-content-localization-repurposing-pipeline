@@ -5,13 +5,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { JobsPage } from "./pages/JobsPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
 import { ProfilePage } from "./pages/ProfilePage";
-import { createAuthStore } from "./store/authStore";
-import { createJobStore } from "./store/jobStore";
-import { createProfileStore } from "./store/profileStore";
-
-const authStore = createAuthStore();
-const jobStore = createJobStore();
-const profileStore = createProfileStore();
+import { authStore } from "./store";
 
 export default function App() {
   const [ready, setReady] = useState(false);

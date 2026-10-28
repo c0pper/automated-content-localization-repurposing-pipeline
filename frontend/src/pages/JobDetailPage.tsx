@@ -1,35 +1,32 @@
 /** Job details page (issue #27). */
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useStore } from "zustand";
 import { jobStore, profileStore } from "@/store";
 import { useTranslation } from "@/lib/useTranslation";
-import type { Job } from "@/lib/types";
 
-export function JobDetailPage({ location }: { location: { hash: string } }) {
-  const jobId = location.hash.replace(/^#/, "");
+export function JobDetailPage({ jobId }: { jobId: string }) {
   const t = useTranslation();
-  const job = jobStore((s) => s.selectedJob);
-  const ws = profileStore((s) => s.workspace);
-  const loadJobs = jobStore.getState().listJobs;
-  const [gate, setGate] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const job = useStore(jobStore, (s) => s.selectedJob);
+  const ws = useStore(profileStore, (s) => s.workspace);
+  const gate = useStore(jobStore, (s) => s.gate);
+  const selectedLoading = useStore(jobStore, (s) => s.selectedLoading);
 
   useEffect(() => {
     void (async () => {
-      try { await jobStore.getState().getJob(jobId ?? ""); } catch { /* err */ }
-      try { await jobStore.getState().getGate(jobId ?? ""); } catch { /* err */ }
-      setLoading(false);
+      if (!jobId) return;
+      try { await jobStore.getState().getJob(jobId); } catch { /* err */ }
+      try { await jobStore.getState().getGate(jobId); } catch { /* err */ }
     })();
-  }, [jobId, loadJobs]);
+  }, [jobId]);
 
-  if (loading && !job) return <div className="p-6">Loading…</div>;
-
-  // Auto-load workspace if we have a job and no workspace loaded yet
+  // Auto-load workspace if we have a job and no workspace loaded yet.
   useEffect(() => {
     if (job && ws?.workspace_id == null) {
       void profileStore.getState().loadWorkspace();
     }
   }, [job, ws?.workspace_id]);
 
+  if (selectedLoading && !job) return <div className="p-6">{t.loading}</div>;
   if (!job) return <div className="p-6 text-red-400">Job not found.</div>;
 
   // Build segment cards from the job's segments array
@@ -64,7 +61,7 @@ export function JobDetailPage({ location }: { location: { hash: string } }) {
   // Build a simplified cost summary
   const costSummary = () => {
     if (!job.cost) return null;
-    const { job_budget_usd, spent_usd, workspace_remaining_usd, entries } = job.cost;
+    const { job_budget_usd, spent_usd, workspace_remaining_usd } = job.cost;
     return (
       <div>
         <div>
@@ -79,11 +76,6 @@ export function JobDetailPage({ location }: { location: { hash: string } }) {
           <span className="text-text-dim">Remaining</span>
           <strong>{workspace_remaining_usd}</strong>
         </div>
-        {entries.length > 0 && (
-          <div className="mt-2 text-xs text-text-dim">
-            {entries.length} entries recorded
-          </div>
-        )}
       </div>
     );
   };
@@ -163,9 +155,9 @@ export function JobDetailPage({ location }: { location: { hash: string } }) {
               </tbody>
             </table>
           </div>
-          {job.selection_matrix && (
+          {gate && (
             <div className="mt-4 bg-surface-2 rounded-lg p-3 text-xs text-text-dim">
-              <strong>Projected total:</strong> {job.projected_total_usd}
+              <strong>{t.totalProjected}:</strong> {gate.projected_total_usd}
             </div>
           )}
         </section>

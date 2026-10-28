@@ -72,10 +72,16 @@ describe("api client", () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: { code: "ok" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
       );
     const result = await api.get("/workspace");
     expect(result).toEqual({ detail: { code: "ok" } });
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
   it("parses selection_price_changed error with current total", async () => {

@@ -23,19 +23,19 @@ export const createAuthStore = () =>
       const payload = await res.json();
       const ok = payload.detail?.code === "ok" || res.ok;
       if (ok) {
-        set({ user: { sub: "creator" } }, false, "auth/login");
+        set({ user: { sub: "creator" } });
       } else {
         throw new Error(payload.detail?.message ?? payload.message ?? "Login failed");
       }
     },
     logout: async () => {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-      set({ user: null }, false, "auth/logout");
+      set({ user: null });
     },
     refresh: async () => {
       const res = await fetch("/api/auth/refresh", { method: "POST", credentials: "include" });
       if (!res.ok) {
-        set({ user: null }, false, "auth/refresh-failed");
+        set({ user: null });
         throw new Error("Refresh failed");
       }
     },

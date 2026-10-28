@@ -72,155 +72,163 @@ export const createJobStore = () =>
     busy: false,
 
     listJobs: async (opts) => {
-      set({ loading: true, error: null }, false, "job/listJobs");
+      set({ loading: true, error: null });
       try {
-        const query = {
+        const query: { limit: number; cursor: string | null; status?: string } = {
           limit: opts?.limit ?? 50,
           cursor: opts?.cursor ?? null,
         };
         if (opts?.status) query.status = opts.status;
         const res = await api.get<JobList>("/jobs", { query });
-        set({ jobs: res.items, nextCursor: res.next_cursor, loading: false }, false, "job/listJobs-success");
+        set({ jobs: res.items, nextCursor: res.next_cursor, loading: false });
       } catch (e) {
-        set({ loading: false, error: e instanceof Error ? e.message : "Failed to load jobs" }, false, "job/listJobs-error");
+        set({ loading: false, error: e instanceof Error ? e.message : "Failed to load jobs" });
         throw e;
       }
     },
 
     getJob: async (jobId) => {
-      set({ selectedLoading: true }, false, "job/getJob");
+      set({ selectedLoading: true });
       try {
         const job = await api.get<Job>(`/jobs/${jobId}`);
-        set({ selectedJob: job, selectedLoading: false }, false, "job/getJob-success");
+        set({ selectedJob: job, selectedLoading: false });
         return job;
       } catch (e) {
-        set({ selectedLoading: false }, false, "job/getJob-error");
+        set({ selectedLoading: false });
         throw e;
       }
     },
 
     getGate: async (jobId) => {
-      set({ gateLoading: true }, false, "job/getGate");
+      set({ gateLoading: true });
       try {
         const gate = await api.get<GatePayload>(`/jobs/${jobId}/selection`);
-        set({ gate, gateLoading: false }, false, "job/getGate-success");
+        set({ gate, gateLoading: false });
         return gate;
       } catch (e) {
-        set({ gateLoading: false }, false, "job/getGate-error");
+        set({ gateLoading: false });
         throw e;
       }
     },
 
     getCost: async (jobId) => {
-      set({ costLoading: true }, false, "job/getCost");
+      set({ costLoading: true });
       try {
         const cost = await api.get<CostBreakdown>(`/jobs/${jobId}/cost`);
-        set({ cost, costLoading: false }, false, "job/getCost-success");
+        set({ cost, costLoading: false });
         return cost;
       } catch (e) {
-        set({ costLoading: false }, false, "job/getCost-error");
+        set({ costLoading: false });
         throw e;
       }
     },
 
     submitJob: async (payload) => {
-      set({ busy: true, error: null }, false, "job/submitJob");
+      set({ busy: true, error: null });
       try {
         const accepted = await api.post<JobAccepted>("/jobs", payload);
-        set({ busy: false }, false, "job/submitJob-success");
+        set({ busy: false });
         return accepted;
       } catch (e) {
-        set({ busy: false, error: e instanceof Error ? e.message : "Failed to submit job" }, false, "job/submitJob-error");
+        set({ busy: false, error: e instanceof Error ? e.message : "Failed to submit job" });
         throw e;
       }
     },
 
     confirmSelection: async (jobId, segmentIds, languages, expectedTotalUsd) => {
-      set({ busy: true, error: null }, false, "job/confirmSelection");
+      set({ busy: true, error: null });
       try {
-        const job = await api.post<Job>(`/jobs/${jobId}/selection", {
+        const job = await api.post<Job>(`/jobs/${jobId}/selection`, {
           segment_ids: segmentIds,
           languages,
           expected_total_usd: expectedTotalUsd,
         });
-        set({ selectedJob: job, busy: false }, false, "job/confirmSelection-success");
+        set({ selectedJob: job, busy: false });
         return job;
       } catch (e) {
-        set({ busy: false }, false, "job/confirmSelection-error");
+        set({ busy: false });
         throw e;
       }
     },
 
     cancelJob: async (jobId) => {
-      set({ busy: true, error: null }, false, "job/cancelJob");
+      set({ busy: true, error: null });
       try {
-        const job = await api.post<Job>(`/jobs/${jobId}/cancel");
-        set({ selectedJob: job, busy: false }, false, "job/cancelJob-success");
+        const job = await api.post<Job>(`/jobs/${jobId}/cancel`);
+        set({ selectedJob: job, busy: false });
         return job;
       } catch (e) {
-        set({ busy: false }, false, "job/cancelJob-error");
+        set({ busy: false });
         throw e;
       }
     },
 
     retryJob: async (jobId) => {
-      set({ busy: true, error: null }, false, "job/retryJob");
+      set({ busy: true, error: null });
       try {
-        const job = await api.post<Job>(`/jobs/${jobId}/retry");
-        set({ selectedJob: job, busy: false }, false, "job/retryJob-success");
+        const job = await api.post<Job>(`/jobs/${jobId}/retry`);
+        set({ selectedJob: job, busy: false });
         return job;
       } catch (e) {
-        set({ busy: false }, false, "job/retryJob-error");
+        set({ busy: false });
         throw e;
       }
     },
 
     deriveJob: async (payload) => {
-      set({ busy: true, error: null }, false, "job/deriveJob");
+      set({ busy: true, error: null });
       try {
-        const job = await api.post<Job>(`/jobs/${payload.parentJobId}/derive", {
+        const job = await api.post<Job>(`/jobs/${payload.parentJobId}/derive`, {
           mode: payload.mode,
           target_languages: payload.target_languages,
           lip_sync: payload.lip_sync,
           model_overrides: payload.model_overrides,
           refresh_long_form: payload.refresh_long_form,
         });
-        set({ selectedJob: job, busy: false }, false, "job/deriveJob-success");
+        set({ selectedJob: job, busy: false });
         return job;
       } catch (e) {
-        set({ busy: false }, false, "job/deriveJob-error");
+        set({ busy: false });
         throw e;
       }
     },
 
     rotateReviewLink: async (jobId) => {
-      set({ busy: true, error: null }, false, "job/rotateReviewLink");
+      set({ busy: true, error: null });
       try {
-        const res = await api.post<{ review_url: string; rotated_at: string }>(`/jobs/${jobId}/review-link");
-        set({ busy: false }, false, "job/rotateReviewLink-success");
+        const res = await api.post<{ review_url: string; rotated_at: string }>(`/jobs/${jobId}/review-link`);
+        set({ busy: false });
         return res;
       } catch (e) {
-        set({ busy: false }, false, "job/rotateReviewLink-error");
+        set({ busy: false });
         throw e;
       }
     },
 
     revokeReviewLink: async (jobId) => {
-      set({ busy: true, error: null }, false, "job/revokeReviewLink");
+      set({ busy: true, error: null });
       try {
         await api.delete(`/jobs/${jobId}/review-link`);
-        set({ busy: false }, false, "job/revokeReviewLink-success");
+        set({ busy: false });
       } catch (e) {
-        set({ busy: false }, false, "job/revokeReviewLink-error");
+        set({ busy: false });
         throw e;
       }
     },
 
     reset: () => {
-      set(
-        { jobs: [], nextCursor: null, loading: false, error: null, selectedJob: null, selectedLoading: false, gate: null, gateLoading: false, cost: null, costLoading: false, busy: false },
-        false,
-        "job/reset",
-      );
+      set({
+        jobs: [],
+        nextCursor: null,
+        loading: false,
+        error: null,
+        selectedJob: null,
+        selectedLoading: false,
+        gate: null,
+        gateLoading: false,
+        cost: null,
+        costLoading: false,
+        busy: false,
+      });
     },
   }));

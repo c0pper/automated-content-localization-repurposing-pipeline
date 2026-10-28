@@ -21,13 +21,21 @@ export class ApiError extends Error {
   code: string;
   status: number;
   details: Record<string, unknown>;
+  retryable: boolean;
 
-  constructor(status: number, code: string, message: string, details: Record<string, unknown> = {}) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details: Record<string, unknown> = {},
+    retryable = false,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.details = details;
+    this.retryable = retryable;
   }
 }
 

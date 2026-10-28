@@ -1,12 +1,13 @@
 /** Dashboard overview page (issue #21). */
 import { useEffect, useState } from "react";
-import { jobStore } from "@/store/jobStore";
+import { useStore } from "zustand";
+import { jobStore } from "@/store";
 import { JobCard } from "@/components/JobCard";
 
 export function DashboardPage() {
-  const jobs = jobStore((s) => s.jobs);
-  const loading = jobStore((s) => s.loading);
-  const nextCursor = jobStore((s) => s.nextCursor);
+  const jobs = useStore(jobStore, (s) => s.jobs);
+  const loading = useStore(jobStore, (s) => s.loading);
+  const nextCursor = useStore(jobStore, (s) => s.nextCursor);
   const loadJobs = jobStore.getState().listJobs;
 
   useEffect(() => {

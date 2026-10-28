@@ -9,8 +9,15 @@ describe("JobStore", () => {
   });
 
   it("lists jobs", async () => {
-    store.getState().listJobs();
-    expect(store.getState().loading).toBe(true);
+    globalThis.fetch = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ items: [], next_cursor: null }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await store.getState().listJobs();
+    expect(store.getState().loading).toBe(false);
+    expect(store.getState().jobs).toEqual([]);
   });
 
   it("initializes with empty state", () => {

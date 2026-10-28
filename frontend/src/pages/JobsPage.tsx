@@ -1,12 +1,13 @@
 /** Jobs list + search + filter page (issues #21, #24). */
 import { useEffect, useState } from "react";
-import { jobStore } from "@/store/jobStore";
+import { useStore } from "zustand";
+import { jobStore } from "@/store";
 import { JobCard } from "@/components/JobCard";
 import type { JobStatus } from "@/lib/types";
 
 export function JobsPage() {
-  const jobs = jobStore((s) => s.jobs);
-  const loading = jobStore((s) => s.loading);
+  const jobs = useStore(jobStore, (s) => s.jobs);
+  const loading = useStore(jobStore, (s) => s.loading);
   const loadJobs = jobStore.getState().listJobs;
   const [statusFilter, setStatusFilter] = useState<string>("");
 
