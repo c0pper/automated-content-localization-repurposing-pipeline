@@ -29,8 +29,12 @@ The long-form audio/video supplied for repurposing.
 _Avoid_: Input file, raw video, asset
 
 **Source Input**:
-The remote URL or pre-uploaded Silo object key that identifies a Source Recording. Direct multipart uploads through the API are not accepted.
-_Avoid_: Upload, file, asset URL
+What identifies a Source Recording at submission: a remote URL, or a Source Upload.
+_Avoid_: File, asset URL
+
+**Source Upload**:
+A Source Recording file the Creator sends to Workspace storage before submitting a Job. It becomes Source Input only once the upload has finished. A Source Upload never attached to a Job is discarded after the Retention Window.
+_Avoid_: Pre-upload, attachment, object key
 
 **Transcript**:
 The timestamped, word-level text of a Source Recording. The full Transcript is pruned after the Retention Window; each Clip retains its own spoken source-text excerpt for later Localization and Derived Jobs.

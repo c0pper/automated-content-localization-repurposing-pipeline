@@ -40,13 +40,17 @@ Build a single-page application frontend in React (Vite + TypeScript + Tailwind)
 28. As a Creator, I want to view my account/profile settings, so that I can manage my Workspace.
 29. As a Creator, I want to see a Job's cost breakdown (spent vs budget, workspace remaining), so that I can track spend.
 30. As a Creator, I want to see job failure reasons and whether they are retryable, so that I know what to do next.
+31. As a Creator, I want to upload a video file from my device when creating a Job, so that I do not need to host it somewhere first.
+32. As a Creator, I want to see upload progress and cancel an upload, so that I know how long a large file will take and can change my mind.
+33. As a Creator, I want to see my file's duration and be warned if it is outside the allowed length before it uploads, so that I do not wait for a file the pipeline will reject.
 
 ## Implementation Decisions
 
-- **Seam / interface boundary:** The frontend talks exclusively to the existing FastAPI backend via the documented REST contracts under `/api`. No new backend endpoints are introduced for v1; the frontend adapts to `GET /api/jobs`, `POST /api/jobs`, `GET/PUT/DELETE /api/jobs/{id}`, `GET/POST /api/jobs/{id}/selection`, `GET /api/jobs/{id}/bundle`, `GET /api/jobs/{id}/events`, `GET /api/jobs/{id}/cost`, `POST /api/jobs/{id}/cancel`, `POST /api/jobs/{id}/retry`, `POST /api/jobs/{id}/derive`, `POST/DELETE /api/jobs/{id}/review-link`, `GET /api/review/{token}`, `GET/PUT /api/workspace`, `GET/PUT/DELETE /api/workspace/voice-profile`.
+- **Seam / interface boundary:** The frontend talks exclusively to the existing FastAPI backend via the documented REST contracts under `/api`. The only new backend endpoints are the Source Upload endpoints (ADR 0022): `POST /api/uploads`, `GET /api/uploads/{id}/parts`, `POST /api/uploads/{id}/complete`, `DELETE /api/uploads/{id}`. Otherwise the frontend adapts to `GET /api/jobs`, `POST /api/jobs`, `GET/PUT/DELETE /api/jobs/{id}`, `GET/POST /api/jobs/{id}/selection`, `GET /api/jobs/{id}/bundle`, `GET /api/jobs/{id}/events`, `GET /api/jobs/{id}/cost`, `POST /api/jobs/{id}/cancel`, `POST /api/jobs/{id}/retry`, `POST /api/jobs/{id}/derive`, `POST/DELETE /api/jobs/{id}/review-link`, `GET /api/review/{token}`, `GET/PUT /api/workspace`, `GET/PUT/DELETE /api/workspace/voice-profile`.
 - **Authentication seam:** JWT in httpOnly cookies with a refresh-token flow; the frontend never stores tokens in localStorage and never handles provider credentials.
 - **Module: Auth domain** (Zustand slice) — interface: `login`, `logout`, `getToken`, `isAuthenticated`, `user`; implementation handles cookie attachment via fetch interceptors and refresh rotation.
 - **Module: Job domain** (Zustand slice) — interface: `listJobs`, `getJob`, `createJob`, `cancelJob`, `retryJob`, `deriveJob`, `confirmSelection`; implementation maps API `segments[]` wire alias to internal `Clip` vocabulary from `GLOSSARY.md`.
+- **Module: Source upload** — interface: `uploadSource(file, { onProgress, signal }) → Promise<{ key }>`; implementation starts a Source Upload, fetches presigned part URLs on demand, PUTs 32 MiB parts directly to object storage with 4 in flight and per-part retry, completes the upload, and aborts it when `signal` fires. The New Job form offers **Upload** (default) or **URL**; the raw object key is never shown. Uploading starts as soon as a file is picked; "Create Job" waits for it and then submits `source: {type: "object", key}`. Removing the file or cancelling aborts the upload; leaving the page mid-upload triggers a `beforeunload` warning, and an interrupted upload is not resumed. The browser reads the file's duration locally and warns, without blocking, when it is outside the allowed length.
 - **Module: Localization domain** (Zustand slice) — interface: `setTargetLanguages`, `setLipSync`, `setModelOverrides`, `setVoiceProfile`, `setUILanguage`; implementation persists preferences and drives localized asset/copy rendering.
 - **Module: UI theme domain** (Zustand slice) — interface: `setAccentColor`, `setTheme`, `toggleDarkMode`; implementation applies Tailwind classes and CSS variables for black background + selectable neon accents (electric green, magenta, cyan default, amber).
 - **Module: Video player domain** — interface: `playClip(assetUrl, captionsUrl)`; implementation is a `react-player` wrapper with custom controls supporting MP4/HLS and burned-in caption display.
@@ -62,14 +66,15 @@ Build a single-page application frontend in React (Vite + TypeScript + Tailwind)
 ## Testing Decisions
 
 - Good tests assert external behavior only (rendered output, user interactions, API call shapes), never Zustand internal reducer details or component implementation.
+- Source upload is tested behind its own seam: `NewJobPage` tests stub `uploadSource` rather than mocking XHR/fetch; the module itself is tested against a fake upload API (progress, part retry, abort on cancel, completion before submission).
 - Modules to test: Auth domain (login/refresh/logout flow), Job domain (list/create/cancel/selection confirm with mocked API), Localization domain (preference persistence), UI theme domain (accent color application), Video player (asset URL + caption source binding), Review access (token URL construction).
 - Prior art: follow existing test conventions in the repo's `tests/` directory; use the in-memory/local adapters pattern from the backend as the mock analogue for API calls.
 - Integration coverage for the Selection Gate flow: open gate → view matrix → select rectangle → confirm → observe `PROCESSING` + `stage: localization`.
 
 ## Out of Scope
 
-- Backend changes: no new API endpoints, no GraphQL, no WebSocket for v1.
-- Multipart video uploads through the API (not supported in v1); submission is via URL or pre-uploaded Silo object key only.
+- Backend changes beyond the Source Upload endpoints: no other new API endpoints, no GraphQL, no WebSocket for v1.
+- Streaming upload bytes through the API, and resuming an interrupted upload after a page reload (ADR 0022).
 - Analytics dashboard and tracking (deferred; not essential for v1 per Q10).
 - AI subject tracking for vertical reframing (v1 uses deterministic center crop).
 - Long-form LinkedIn/newsletter copy localization (stays in Source Language per v1).
