@@ -135,7 +135,6 @@ export const en: Dict = {
   // Job details (issue #27)
   segment: "Segment",
   status: "Status",
-  stage: "Stage",
   created: "Created",
   jobNotFound: "Job not found.",
   baseClip: "Base clip",
@@ -254,7 +253,6 @@ const esOverrides: Dict = {
   // Job details (issue #27)
   segment: "Segmento",
   status: "Estado",
-  stage: "Etapa",
   created: "Creado",
   jobNotFound: "Trabajo no encontrado.",
   baseClip: "Clip base",
@@ -374,7 +372,6 @@ const deOverrides: Dict = {
   // Job details (issue #27)
   segment: "Segment",
   status: "Status",
-  stage: "Phase",
   created: "Erstellt",
   jobNotFound: "Auftrag nicht gefunden.",
   baseClip: "Basis-Clip",
