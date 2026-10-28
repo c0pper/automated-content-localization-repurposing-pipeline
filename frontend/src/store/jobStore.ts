@@ -43,7 +43,8 @@ export type JobStore = {
   costLoading: boolean;
   busy: boolean;
 
-  listJobs: (opts?: { status?: string; limit?: number; cursor?: string | null }) => Promise<void>;
+  /** Replaces `jobs` with one page; with `append: true` adds the page after the loaded jobs ("load more"). */
+  listJobs: (opts?: { status?: string; limit?: number; cursor?: string | null; append?: boolean }) => Promise<void>;
   getJob: (jobId: string) => Promise<Job>;
   getGate: (jobId: string) => Promise<GatePayload>;
   getCost: (jobId: string) => Promise<CostBreakdown>;
@@ -80,7 +81,11 @@ export const createJobStore = () =>
         };
         if (opts?.status) query.status = opts.status;
         const res = await api.get<JobList>("/jobs", { query });
-        set({ jobs: res.items, nextCursor: res.next_cursor, loading: false });
+        set((s) => ({
+          jobs: opts?.append ? [...s.jobs, ...res.items] : res.items,
+          nextCursor: res.next_cursor,
+          loading: false,
+        }));
       } catch (e) {
         set({ loading: false, error: e instanceof Error ? e.message : "Failed to load jobs" });
         throw e;

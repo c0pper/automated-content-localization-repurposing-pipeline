@@ -3,13 +3,27 @@ import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { jobStore } from "@/store";
 import { JobCard } from "@/components/JobCard";
+import { useTranslation } from "@/lib/useTranslation";
 import type { JobStatus } from "@/lib/types";
 
+const STATUSES: JobStatus[] = [
+  "RECEIVED",
+  "PROCESSING",
+  "AWAITING_SELECTION",
+  "COMPLETED",
+  "FAILED",
+  "EXPIRED",
+  "CANCELLED",
+];
+
 export function JobsPage() {
+  const t = useTranslation();
   const jobs = useStore(jobStore, (s) => s.jobs);
   const loading = useStore(jobStore, (s) => s.loading);
+  const nextCursor = useStore(jobStore, (s) => s.nextCursor);
   const loadJobs = jobStore.getState().listJobs;
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [keyword, setKeyword] = useState("");
 
   useEffect(() => {
     void (async () => {
@@ -17,49 +31,70 @@ export function JobsPage() {
     })();
   }, [loadJobs, statusFilter]);
 
-  if (loading && jobs.length === 0) return <div className="p-6">Loading…</div>;
+  const loadMore = async () => {
+    try {
+      await loadJobs({ status: statusFilter || undefined, cursor: nextCursor, append: true });
+    } catch { /* store */ }
+  };
 
-  const statuses: JobStatus[] = [
-    "RECEIVED",
-    "PROCESSING",
-    "AWAITING_SELECTION",
-    "COMPLETED",
-    "FAILED",
-    "EXPIRED",
-    "CANCELLED",
-  ];
+  // The backend has no keyword filter: search runs client-side over the loaded page(s).
+  const needle = keyword.trim().toLowerCase();
+  const visibleJobs = needle
+    ? jobs.filter((j) =>
+        [j.job_id, j.status, j.stage ?? ""].some((field) => field.toLowerCase().includes(needle)),
+      )
+    : jobs;
 
   return (
     <div className="space-y-6">
       <header className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-accent">Jobs</h2>
+        <h2 className="text-2xl font-bold text-accent">{t.jobs}</h2>
       </header>
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-        <button
-          onClick={() => setStatusFilter("")}
-          className={`text-xs px-3 py-1 rounded ${!statusFilter ? "bg-accent/15 text-accent" : "text-text-dim"}`}
-        >
-          All
-        </button>
-        {statuses.map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={`text-xs px-3 py-1 rounded ${statusFilter === s ? "bg-accent/15 text-accent" : "text-text-dim"}`}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <input
+          type="search"
+          aria-label={t.search}
+          placeholder={t.jobSearchPlaceholder}
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          className="flex-1 min-w-[12rem] bg-surface border border-border rounded px-2 py-1 text-sm text-text"
+        />
+        <label className="flex items-center gap-2 text-xs text-text-dim">
+          {t.statusFilter}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="bg-surface border border-border rounded px-2 py-1 text-text"
           >
-            {s}
-          </button>
-        ))}
+            <option value="">{t.statusAll}</option>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
-      {jobs.length === 0 ? (
-        <p className="text-text-dim">No jobs match the current filter.</p>
+      {loading && jobs.length === 0 ? (
+        <div className="p-6">{t.loading}</div>
+      ) : visibleJobs.length === 0 ? (
+        <p className="text-text-dim">{t.noJobsMatch}</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {jobs.map((job) => (
+          {visibleJobs.map((job) => (
             <JobCard key={job.job_id} job={job} />
           ))}
         </div>
+      )}
+
+      {nextCursor && (
+        <button
+          type="button"
+          onClick={loadMore}
+          disabled={loading}
+          className="text-sm px-4 py-2 rounded border border-border text-accent disabled:opacity-50"
+        >
+          {loading ? t.loading : t.loadMore}
+        </button>
       )}
     </div>
   );
