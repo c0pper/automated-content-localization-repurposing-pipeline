@@ -46,6 +46,13 @@ export function Nav({ path, onNavigate }: NavProps) {
           Jobs
         </button>
         <button
+          onClick={() => onNavigate("/jobs/new")}
+          className={linkCls("/jobs/new")}
+          aria-label="New job"
+        >
+          New job
+        </button>
+        <button
           onClick={() => onNavigate("/profile")}
           className={linkCls("/profile")}
           aria-label="Profile"
