@@ -145,6 +145,62 @@ describe("ProfilePage", () => {
     );
   });
 
+  it("warns prominently when no voice profile is configured", async () => {
+    mockGetWorkspace({ ...workspace, voice_profile: null });
+    render(<ProfilePage />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "Voice profile is missing — localization will fail.",
+    );
+  });
+
+  it("does not warn when a voice profile is configured", async () => {
+    mockGetWorkspace();
+    render(<ProfilePage />);
+    await screen.findByText("voice_123");
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it.each([
+    ["unsupported_voice_provider", "Only ElevenLabs voice profiles are supported."],
+    ["invalid_voice_profile", "The voice ID is not valid. Check it in ElevenLabs and try again."],
+  ])("explains a rejected voice profile (%s) by error code", async (code, expected) => {
+    mockGetWorkspace({ ...workspace, voice_profile: null });
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(
+        { detail: { code, message: "raw backend text", details: {} } },
+        422,
+      ),
+    );
+
+    render(<ProfilePage />);
+    await screen.findByText(/No voice profile configured/);
+
+    fireEvent.change(screen.getByLabelText("Voice ID"), {
+      target: { value: "voice_bad" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save voice profile" }));
+
+    await waitFor(() => {
+      const alerts = screen.getAllByRole("alert").map((a) => a.textContent);
+      expect(alerts.some((text) => text?.includes(expected))).toBe(true);
+    });
+    expect(screen.queryByText("raw backend text")).toBeNull();
+  });
+
+  it("offers only the ElevenLabs provider", async () => {
+    mockGetWorkspace({ ...workspace, voice_profile: null });
+    render(<ProfilePage />);
+    await screen.findByText(/No voice profile configured/);
+
+    const options = Array.from(
+      (screen.getByLabelText("Provider") as HTMLSelectElement).options,
+    ).map((o) => o.value);
+    expect(options).toEqual(["elevenlabs"]);
+  });
+
   it("links the summary to voice profile management", async () => {
     mockGetWorkspace();
     render(<ProfilePage />);
