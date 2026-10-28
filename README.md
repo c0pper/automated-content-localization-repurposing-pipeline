@@ -134,7 +134,7 @@ transitions.
 
 The SQL adapter mirrors the aggregate into `jobs`, `clips` and `clip_localizations` while
 keeping a complete payload for checkpoint resume. The Postgres schema is
-[`migrations/001_initial.sql`](migrations/001_initial.sql); `app.migrate` is idempotent.
+[`migrations/`](migrations/) (`001_initial.sql`, `002_source_uploads.sql`); `app.migrate` is idempotent.
 
 > AI provider adapters are still deterministic stubs in this build: a production stack is
 > durable for persistence, queueing, storage and notifications, but it does not make paid

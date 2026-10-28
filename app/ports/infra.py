@@ -16,6 +16,7 @@ from app.domain.models import (
     NotificationOutboxEntry,
     Purge,
     ReviewToken,
+    SourceUpload,
     VoiceProfile,
     WorkspaceAuditEntry,
     WorkspaceSettings,
@@ -123,6 +124,23 @@ class PurgeRepository(Protocol):
     async def save(self, purge: Purge) -> None: ...
 
     async def delete_all(self, workspace_id: str) -> None: ...
+
+
+class SourceUploadRepository(Protocol):
+    async def add(self, upload: SourceUpload) -> None: ...
+
+    async def get(self, upload_id: str) -> SourceUpload | None: ...
+
+    async def get_by_key(self, key: str) -> SourceUpload | None: ...
+
+    async def save(self, upload: SourceUpload) -> None: ...
+
+    async def claim(self, key: str, job_id: str) -> bool:
+        """Atomically attach a completed, unattached upload to ``job_id``.
+
+        Returns ``False`` when no such upload exists, so a key is attached at most once.
+        """
+        ...
 
 
 class LeaseStore(Protocol):

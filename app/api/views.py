@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.domain.enums import JobStatus
-from app.domain.models import CostLedgerEntry, Job, JobEvent
+from app.domain.models import CostLedgerEntry, Job, JobEvent, SourceUpload
 from app.domain.money import format_usd
 from app.services.cost import CostService
 from app.services.review import ReviewService
@@ -172,4 +172,13 @@ def workspace_view(snapshot: dict) -> dict:
             if voice
             else None
         ),
+    }
+
+
+def upload_view(upload: SourceUpload) -> dict:
+    return {
+        "upload_id": upload.upload_id,
+        "key": upload.key,
+        "size_bytes": upload.actual_size_bytes,
+        "status": upload.status.value,
     }

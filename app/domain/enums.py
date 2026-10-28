@@ -87,6 +87,14 @@ class PurgeStatus(StrEnum):
     FAILED = "failed"
 
 
+class SourceUploadStatus(StrEnum):
+    """Lifecycle of a Source Upload (ADR 0022); no Job exists while ``UPLOADING``."""
+
+    UPLOADING = "UPLOADING"
+    COMPLETED = "COMPLETED"
+    ABORTED = "ABORTED"
+
+
 class WebhookSource(StrEnum):
     DRIVE = "drive"
     YOUTUBE = "youtube"

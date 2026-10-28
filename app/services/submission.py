@@ -33,6 +33,7 @@ class JobSubmissionService:
         clock: Clock,
         settings: Settings,
         purge=None,
+        uploads=None,
     ) -> None:
         self._repository = repository
         self._queue = queue
@@ -43,6 +44,7 @@ class JobSubmissionService:
         self._clock = clock
         self._settings = settings
         self._purge = purge
+        self._uploads = uploads
 
     async def submit(
         self,
@@ -103,6 +105,8 @@ class JobSubmissionService:
             created_at=self._clock.now(),
             updated_at=self._clock.now(),
         )
+        if source.type == "object" and self._uploads is not None:
+            await self._uploads.attach(source.key or "", job.job_id)
         await self._repository.add(job)
         await self._events.emit(
             job,
@@ -139,6 +143,8 @@ class JobSubmissionService:
     async def _validate_source(self, source: SourceInput) -> None:
         if source.type == "object":
             validate_object_key(source.key or "")
+            if self._uploads is not None:
+                await self._uploads.ensure_attachable(source.key or "")
             if not await self._store.exists(source.key or ""):
                 raise GuardrailViolation(
                     "invalid_object_key", f"Object not found: {source.key}"
