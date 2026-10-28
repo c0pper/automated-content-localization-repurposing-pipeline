@@ -115,17 +115,61 @@ describe("JobDetailPage", () => {
     expect(card.textContent).toContain("Business fit: 16");
   });
 
-  it("links clip assets through the stable /api/jobs/{id}/assets redirect routes, never raw store URLs", async () => {
+  it("plays Base and Localized Clips through the stable /api/jobs/{id}/assets redirect routes, never raw store URLs", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse(makeJob()));
     render(<JobDetailPage jobId="job_42" />);
 
     const card = await screen.findByRole("article", { name: "Segment 7" });
     const c = within(card);
-    const base = c.getByRole("link", { name: /Base clip/ });
-    expect(base.getAttribute("href")).toBe("/api/jobs/job_42/assets/base_7");
-    const es = c.getByRole("link", { name: /Localized clip \(es\)/ });
-    expect(es.getAttribute("href")).toBe("/api/jobs/job_42/assets/clip_7_es");
+    const base = c.getByLabelText("Base clip");
+    expect(base.tagName).toBe("VIDEO");
+    expect(base.getAttribute("src")).toBe("/api/jobs/job_42/assets/base_7");
+    expect(c.getByText("Captions burned in (en)")).toBeTruthy();
+    const es = c.getByLabelText("Localized clip (es)");
+    expect(es.tagName).toBe("VIDEO");
+    expect(es.getAttribute("src")).toBe("/api/jobs/job_42/assets/clip_7_es");
+    expect(c.getByText("Captions burned in (es)")).toBeTruthy();
+    expect(c.getByRole("link", { name: "Open Localized clip (es)" }).getAttribute("href")).toBe(
+      "/api/jobs/job_42/assets/clip_7_es",
+    );
     expect(card.innerHTML).not.toContain("silo.local");
+  });
+
+  it("only offers localized playback for languages whose localized clip is available", async () => {
+    // de is a Target Language but was not localized (no asset in the job view).
+    const job = makeJob();
+    job.segments[0].localized_assets = { es: "http://silo.local/bucket/clip_7_es.mp4", de: "" };
+    mockFetch.mockResolvedValueOnce(jsonResponse(job));
+    render(<JobDetailPage jobId="job_42" />);
+
+    const card = await screen.findByRole("article", { name: "Segment 7" });
+    const c = within(card);
+    expect(c.getByLabelText("Localized clip (es)")).toBeTruthy();
+    expect(c.queryByLabelText("Localized clip (de)")).toBeNull();
+    expect(card.innerHTML).not.toContain("clip_7_de");
+  });
+
+  it("shows the localized Hook and social caption below each localized clip, noting the Voice Profile and lip-sync", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(makeJob({ lip_sync: true })));
+    render(<JobDetailPage jobId="job_42" />);
+
+    const card = await screen.findByRole("article", { name: "Segment 7" });
+    const video = within(card).getByLabelText("Localized clip (es)");
+    const copy = within(card).getByRole("group", { name: "Localized copy (es)" });
+    expect(video.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(copy.getAttribute("lang")).toBe("es");
+    expect(within(copy).getByText("Por qué fallan el 90% de los anuncios B2B SaaS")).toBeTruthy();
+    expect(card.textContent).toContain("Dubbed with your Voice Profile");
+    expect(card.textContent).toContain("lip-sync applied");
+  });
+
+  it("does not claim lip-sync when the job was submitted without it", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(makeJob({ lip_sync: false })));
+    render(<JobDetailPage jobId="job_42" />);
+
+    const card = await screen.findByRole("article", { name: "Segment 7" });
+    expect(card.textContent).toContain("Dubbed with your Voice Profile");
+    expect(card.textContent).not.toContain("lip-sync applied");
   });
 
   it("shows that no localized clips exist yet before localization", async () => {
@@ -138,7 +182,8 @@ describe("JobDetailPage", () => {
 
     const card = await screen.findByRole("article", { name: "Segment 7" });
     const c = within(card);
-    expect(c.queryByRole("link", { name: /Base clip/ })).toBeNull();
+    expect(c.queryByLabelText("Base clip")).toBeNull();
+    expect(card.querySelector("video")).toBeNull();
     expect(c.getByText("No localized clips yet")).toBeTruthy();
   });
 

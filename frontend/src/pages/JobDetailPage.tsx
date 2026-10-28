@@ -1,9 +1,10 @@
-/** Job details page (issue #27). */
+/** Job details page (issue #27); Base/Localized Clip playback (issue #30). */
 import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { jobStore } from "@/store";
 import { interpolate, useTranslation } from "@/lib/useTranslation";
 import { jobAssetUrl } from "@/lib/api";
+import { VideoPlayer } from "@/components/VideoPlayer";
 import type { Clip } from "@/lib/types";
 import type { Dict } from "@/lib/i18n";
 
@@ -36,7 +37,14 @@ export function JobDetailPage({ jobId }: { jobId: string }) {
   if (!job) return <div className="p-6 text-red-400">{t.jobNotFound}</div>;
 
   const segmentCards = job.segments.map((seg) => (
-    <ClipCard key={seg.segment_id} jobId={job.job_id} clip={seg} t={t} />
+    <ClipCard
+      key={seg.segment_id}
+      jobId={job.job_id}
+      clip={seg}
+      sourceLanguage={job.source_language?.code ?? job.copy_origin?.source_language ?? "en"}
+      lipSync={job.lip_sync}
+      t={t}
+    />
   ));
   const statusClass =
     job.status === "COMPLETED" ? "text-green-400"
@@ -191,49 +199,67 @@ export function JobDetailPage({ jobId }: { jobId: string }) {
   );
 }
 
+interface ClipCardProps {
+  jobId: string;
+  clip: Clip;
+  sourceLanguage: string;
+  lipSync: boolean;
+  t: Dict;
+}
+
 /**
- * Asset links use the stable `/api/jobs/{id}/assets/{asset_id}` routes, which
- * 302 to a fresh presigned URL; the wire `video_asset_url` / `localized_assets`
+ * Players use the stable `/api/jobs/{id}/assets/{asset_id}` routes, which 302
+ * to a fresh presigned URL; the wire `video_asset_url` / `localized_assets`
  * values are raw object-store URLs and only tell us that the asset exists.
+ * The backend records a language in `localized_assets` only once that
+ * Localized Clip is COMPLETED, so only those languages get a player
+ * (`clip_{n}_{lang}` 404s otherwise).
  */
-function ClipAssets({ jobId, clip, t }: { jobId: string; clip: Clip; t: Dict }) {
-  const langs = Object.keys(clip.localized_assets ?? {});
-  const linkClass = "text-accent hover:underline";
+function ClipAssets({ jobId, clip, sourceLanguage, lipSync, t }: ClipCardProps) {
+  const langs = Object.entries(clip.localized_assets ?? {})
+    .filter(([, url]) => Boolean(url))
+    .map(([lang]) => lang);
   return (
-    <ul className="text-xs space-y-0.5" aria-label={t.assets}>
+    <div className="space-y-3 text-xs" aria-label={t.assets} role="group">
       {clip.video_asset_url && (
-        <li>
-          <a
-            href={jobAssetUrl(jobId, `base_${clip.segment_id}`)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={linkClass}
-          >
-            {t.baseClip}
-          </a>
-        </li>
+        <VideoPlayer
+          assetUrl={jobAssetUrl(jobId, `base_${clip.segment_id}`)}
+          label={t.baseClip}
+          captionLanguage={sourceLanguage}
+        />
       )}
       {langs.length === 0 ? (
-        <li className="text-text-dim">{t.noLocalizedClips}</li>
+        <p className="text-text-dim">{t.noLocalizedClips}</p>
       ) : (
-        langs.map((lang) => (
-          <li key={lang}>
-            <a
-              href={jobAssetUrl(jobId, `clip_${clip.segment_id}_${lang}`)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={linkClass}
-            >
-              {interpolate(t.localizedClip, { lang })}
-            </a>
-          </li>
-        ))
+        langs.map((lang) => {
+          const copy = clip.localized_copy?.[lang];
+          return (
+            <div key={lang} className="border-t border-border pt-2 space-y-1">
+              <VideoPlayer
+                assetUrl={jobAssetUrl(jobId, `clip_${clip.segment_id}_${lang}`)}
+                label={interpolate(t.localizedClip, { lang })}
+                captionLanguage={lang}
+              />
+              <p className="text-text-dim">
+                {t.dubbedWithVoiceProfile}
+                {lipSync && ` · ${t.lipSyncApplied}`}
+              </p>
+              {copy && (
+                <div role="group" aria-label={`${t.localizedCopy} (${lang})`} lang={lang}>
+                  <div className="text-text font-medium">{copy.hook_title}</div>
+                  <p className="text-text-dim">{copy.caption}</p>
+                </div>
+              )}
+            </div>
+          );
+        })
       )}
-    </ul>
+    </div>
   );
 }
 
-function ClipCard({ jobId, clip, t }: { jobId: string; clip: Clip; t: Dict }) {
+function ClipCard(props: ClipCardProps) {
+  const { clip, t } = props;
   const headingId = `clip-${clip.segment_id}-heading`;
   const b = clip.score_breakdown;
   return (
@@ -261,20 +287,7 @@ function ClipCard({ jobId, clip, t }: { jobId: string; clip: Clip; t: Dict }) {
         <span>{t.rationale}: </span>
         <span>{clip.rationale || "—"}</span>
       </div>
-      <ClipAssets jobId={jobId} clip={clip} t={t} />
-      {Object.entries(clip.localized_copy ?? {}).map(([lang, copy]) => (
-        <div
-          key={lang}
-          role="group"
-          aria-label={`${t.localizedCopy} (${lang})`}
-          lang={lang}
-          className="border-t border-border pt-1 text-xs"
-        >
-          <div className="text-text-dim uppercase">{lang}</div>
-          <div className="text-text font-medium">{copy.hook_title}</div>
-          <p className="text-text-dim">{copy.caption}</p>
-        </div>
-      ))}
+      <ClipAssets {...props} />
     </article>
   );
 }
