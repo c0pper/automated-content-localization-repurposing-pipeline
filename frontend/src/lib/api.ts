@@ -6,28 +6,65 @@
  * POST/DELETE mutations require an Idempotency-Key header.
  */
 
-import type { ApiErrorDetail } from "./types";
+import type { ApiErrorDetail, CostCellTotal } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
-let _csrfCounter = 0;
-function generateIdempotencyKey(): string {
-  _csrfCounter += 1;
+/**
+ * Stable, cookie-authenticated URL for a Job asset. The backend answers with a
+ * 302 to a short-lived presigned URL, so the link never goes stale the way a
+ * raw object-store URL does. Asset ids: `base_{segment}`,
+ * `clip_{segment}_{lang}`, `copy_linkedin`, `copy_newsletter`.
+ */
+export function jobAssetUrl(jobId: string, assetId: string): string {
+  return `${API_BASE}/jobs/${encodeURIComponent(jobId)}/assets/${encodeURIComponent(assetId)}`;
+}
+
+/** Asset id of a Clip's Base Clip review asset (`base_{segment}`). */
+export function baseAssetId(clip: { segment_id: number }): string {
+  return `base_${clip.segment_id}`;
+}
+
+/** Asset id of a Clip's Localized Clip in `lang` (`clip_{segment}_{lang}`). */
+export function localizedAssetId(clip: { segment_id: number }, lang: string): string {
+  return `clip_${clip.segment_id}_${lang}`;
+}
+
+/**
+ * Stable, unauthenticated URL for an asset behind a review token. Like
+ * `jobAssetUrl`, the backend 302s to a presigned URL; a revoked token 404s.
+ */
+export function reviewAssetUrl(token: string, assetId: string): string {
+  return `${API_BASE}/review/${encodeURIComponent(token)}/assets/${encodeURIComponent(assetId)}`;
+}
+
+let _keyCounter = 0;
+/** A fresh Idempotency-Key (ADR-0019). Retry-safe intents reuse one via `lib/idempotency.ts`. */
+export function newIdempotencyKey(): string {
+  _keyCounter += 1;
   const rand = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
-  return `idem_${Date.now().toString(36)}_${_csrfCounter}_${rand.slice(0, 8)}`;
+  return `idem_${Date.now().toString(36)}_${_keyCounter}_${rand.slice(0, 8)}`;
 }
 
 export class ApiError extends Error {
   code: string;
   status: number;
   details: Record<string, unknown>;
+  retryable: boolean;
 
-  constructor(status: number, code: string, message: string, details: Record<string, unknown> = {}) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details: Record<string, unknown> = {},
+    retryable = false,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.details = details;
+    this.retryable = retryable;
   }
 }
 
@@ -60,6 +97,8 @@ export interface RequestOptions {
   body?: unknown;
   query?: Record<string, string | number | boolean | null | undefined>;
   idempotent?: boolean;
+  /** Idempotency-Key to send instead of a fresh one, so a retry replays rather than repeats. */
+  idempotencyKey?: string;
   signal?: AbortSignal;
 }
 
@@ -109,7 +148,7 @@ export const api = {
       headers.set("Content-Type", "application/json");
     }
     if (options.idempotent !== false && (method === "POST" || method === "DELETE")) {
-      headers.set("Idempotency-Key", generateIdempotencyKey());
+      headers.set("Idempotency-Key", options.idempotencyKey ?? newIdempotencyKey());
     }
 
     const doFetch = (signal?: AbortSignal) =>
@@ -177,13 +216,13 @@ export function isRetryableError(error: unknown): boolean {
 export function isSelectionPriceChanged(error: unknown): {
   changed: true;
   currentTotalUsd: string;
-  costMatrix: { segment_id: number; language: string; total_usd: string }[];
+  costMatrix: CostCellTotal[];
   projectedTotalUsd: string;
 } | null {
   if (!(error instanceof ApiError) || error.code !== "selection_price_changed") return null;
   const details = (error.details ?? {}) as Record<string, unknown>;
   const costMatrix = Array.isArray(details.cost_matrix)
-    ? (details.cost_matrix as { segment_id: number; language: string; total_usd: string }[])
+    ? (details.cost_matrix as CostCellTotal[])
     : [];
   return {
     changed: true,

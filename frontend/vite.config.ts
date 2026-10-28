@@ -18,5 +18,7 @@ export default defineConfig({
     environment: "happy-dom",
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["./src/lib/test/vitest.setup.ts"],
+    // Locale-aware dates render in the viewer's time zone; pin it for stable expectations.
+    env: { TZ: "UTC" },
   },
 });

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { authStore } from "@/store/authStore";
+import { authStore } from "@/store";
+import { useTranslation } from "@/lib/useTranslation";
 
 export interface NavProps {
   path: string;
@@ -7,6 +8,7 @@ export interface NavProps {
 }
 
 export function Nav({ path, onNavigate }: NavProps) {
+  const t = useTranslation();
   const [locale, setLocale] = useState<"en" | "es" | "de">("en");
   const locales = [
     { code: "en" as const, label: "EN" },
@@ -36,21 +38,28 @@ export function Nav({ path, onNavigate }: NavProps) {
           <svg className="h-5 w-5 text-accent" viewBox="0 0 24 24" fill="currentColor" focusable="false">
             <path d="M10 6L8.59 9.14 14.15 15H10V6ZM14 4l-4 4 4 4H8L6 8l6 4 2-4h-2V4h8Z" />
           </svg>
-          <span className="text-sm text-text-dim hidden sm:inline">Dashboard</span>
+          <span className="text-sm text-text-dim hidden sm:inline">{t.dashboard}</span>
         </button>
         <button
           onClick={() => onNavigate("/jobs")}
           className={linkCls("/jobs")}
-          aria-label="Jobs"
+          aria-label={t.jobs}
         >
-          Jobs
+          {t.jobs}
+        </button>
+        <button
+          onClick={() => onNavigate("/jobs/new")}
+          className={linkCls("/jobs/new")}
+          aria-label={t.newJob}
+        >
+          {t.newJob}
         </button>
         <button
           onClick={() => onNavigate("/profile")}
           className={linkCls("/profile")}
-          aria-label="Profile"
+          aria-label={t.profile}
         >
-          Profile
+          {t.profile}
         </button>
       </div>
 
@@ -69,9 +78,9 @@ export function Nav({ path, onNavigate }: NavProps) {
         <button
           onClick={logout}
           className="text-sm text-red-400 hover:text-red-300 transition px-3 py-2 rounded-lg"
-          aria-label="Log out"
+          aria-label={t.logout}
         >
-          Log out
+          {t.logout}
         </button>
       </div>
     </nav>

@@ -1,5 +1,5 @@
 import { useState, FormEvent } from "react";
-import { authStore } from "@/store/authStore";
+import { authStore } from "@/store";
 
 export interface AuthGateProps {
   onAuthed: () => void;

@@ -4,19 +4,17 @@ import { Nav } from "./components/Nav";
 import { DashboardPage } from "./pages/DashboardPage";
 import { JobsPage } from "./pages/JobsPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
+import { NewJobPage } from "./pages/NewJobPage";
 import { ProfilePage } from "./pages/ProfilePage";
-import { createAuthStore } from "./store/authStore";
-import { createJobStore } from "./store/jobStore";
-import { createProfileStore } from "./store/profileStore";
-
-const authStore = createAuthStore();
-const jobStore = createJobStore();
-const profileStore = createProfileStore();
+import { ReviewPage } from "./pages/ReviewPage";
+import { SelectionGatePage } from "./pages/SelectionGatePage";
+import { authStore } from "./store";
+import { parseRoute } from "./lib/route";
 
 export default function App() {
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
-  const [path, setPath] = useState("/dashboard");
+  const [path, setPath] = useState(() => window.location.hash.replace(/^#/, "") || "/dashboard");
 
   useEffect(() => {
     void (async () => {
@@ -40,6 +38,19 @@ export default function App() {
     window.location.hash = to;
   };
 
+  const route = parseRoute(path);
+
+  // The review link is an open, read-only view: no Creator session or app chrome.
+  if (route.page === "review") {
+    return (
+      <div className="min-h-screen bg-background text-text">
+        <main className="mx-auto max-w-5xl px-4 pb-24 pt-6">
+          <ReviewPage key={route.token} token={route.token} />
+        </main>
+      </div>
+    );
+  }
+
   if (!ready) {
     return <div className="min-h-screen bg-background text-text p-8 flex items-center justify-center">Loading…</div>;
   }
@@ -49,11 +60,15 @@ export default function App() {
   }
 
   const page =
-    path.startsWith("/jobs/") ? (
-      <JobDetailPage jobId={path.split("/jobs/")[1] ?? ""} />
-    ) : path.startsWith("/jobs") ? (
+    route.page === "newJob" ? (
+      <NewJobPage onCreated={(id) => navigate(`/jobs/${id}`)} />
+    ) : route.page === "jobLocalization" ? (
+      <SelectionGatePage key={route.jobId} jobId={route.jobId} />
+    ) : route.page === "jobDetail" ? (
+      <JobDetailPage jobId={route.jobId} />
+    ) : route.page === "jobs" ? (
       <JobsPage />
-    ) : path.startsWith("/profile") ? (
+    ) : route.page === "profile" ? (
       <ProfilePage />
     ) : (
       <DashboardPage />
