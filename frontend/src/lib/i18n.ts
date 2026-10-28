@@ -6,6 +6,10 @@ export type Dict = Record<string, string>;
 export const en: Dict = {
   appTitle: "Creator Portal",
   dashboard: "Dashboard",
+  jobId: "Job ID",
+  stage: "Stage",
+  createdAt: "Created",
+  dashboardJobCount: "{{count}} jobs",
   library: "Library",
   jobs: "Jobs",
   profile: "Profile",
@@ -132,6 +136,10 @@ export const en: Dict = {
 const esOverrides: Dict = {
   appTitle: "Portal del creador",
   dashboard: "Panel",
+  jobId: "ID del trabajo",
+  stage: "Etapa",
+  createdAt: "Creado",
+  dashboardJobCount: "{{count}} trabajos",
   library: "Biblioteca",
   jobs: "Trabajos",
   profile: "Perfil",
@@ -228,6 +236,10 @@ const esOverrides: Dict = {
 const deOverrides: Dict = {
   appTitle: "Creator-Portal",
   dashboard: "Übersicht",
+  jobId: "Auftrags-ID",
+  stage: "Phase",
+  createdAt: "Erstellt",
+  dashboardJobCount: "{{count}} Aufträge",
   library: "Bibliothek",
   jobs: "Aufträge",
   profile: "Profil",
