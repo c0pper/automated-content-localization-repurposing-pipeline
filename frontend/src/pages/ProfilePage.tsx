@@ -5,7 +5,16 @@ import { useTranslation } from "@/lib/useTranslation";
 import { profileStore } from "@/store";
 import { ThemeSelector } from "@/components/ThemeSelector";
 
-const PROVIDERS = ["elevenlabs", "other"];
+/** The backend accepts ElevenLabs only (`unsupported_voice_provider` otherwise). */
+const PROVIDERS = ["elevenlabs"];
+
+/** Voice profile error codes mapped to i18n keys; other codes show the backend message. */
+const VOICE_ERROR_KEYS: Record<string, string> = {
+  unsupported_voice_provider: "voiceErrorUnsupportedProvider",
+  invalid_voice_profile: "voiceErrorInvalidProfile",
+  validation_error: "voiceErrorInvalidProfile",
+  voice_profile_missing: "voiceProfileMissing",
+};
 
 function money(value: string | null | undefined): string {
   return `$${value ?? "0.00"}`;
@@ -15,7 +24,8 @@ export function ProfilePage() {
   const t = useTranslation();
   const ws = useStore(profileStore, (s) => s.workspace);
   const loading = useStore(profileStore, (s) => s.loading);
-  const errorMsg = useStore(profileStore, (s) => s.error);
+  const rawErrorMsg = useStore(profileStore, (s) => s.error);
+  const errorCode = useStore(profileStore, (s) => s.errorCode);
   const notice = useStore(profileStore, (s) => s.notice);
   const loadWorkspace = profileStore.getState().loadWorkspace;
   const setVoiceProfile = profileStore.getState().setVoiceProfile;
@@ -71,6 +81,9 @@ export function ProfilePage() {
       setSubmitting(false);
     }
   };
+
+  const errorKey = errorCode ? VOICE_ERROR_KEYS[errorCode] : undefined;
+  const errorMsg = rawErrorMsg && errorKey && t[errorKey] ? t[errorKey] : rawErrorMsg;
 
   if (loading && !ws) return <div className="p-6">{t.loading}</div>;
   if (errorMsg && !ws) {
@@ -200,7 +213,13 @@ export function ProfilePage() {
             </div>
           </dl>
         ) : (
-          <p className="text-text-dim text-sm">{t.noVoiceProfile}</p>
+          <div
+            role="alert"
+            className="text-sm text-red-300 bg-red-900/20 border border-red-900/40 rounded-lg p-4 space-y-1"
+          >
+            <p className="font-semibold">{t.voiceProfileMissing}</p>
+            <p>{t.noVoiceProfile}</p>
+          </div>
         )}
 
         <form onSubmit={handleSaveVoice} className="space-y-3">
