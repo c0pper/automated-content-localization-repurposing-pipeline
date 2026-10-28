@@ -1,4 +1,13 @@
-/* Theme CSS variables applied to :root / .dark. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Theme CSS variables. The accent values below are the cyan default; the
+ * theme store (src/store/themeStore.ts) overrides them on <html> at runtime.
+ * `--accent-rgb` holds space-separated channels so Tailwind opacity
+ * modifiers such as `bg-accent/15` work.
+ */
 :root {
   --bg: #050505;
   --surface: #0a0a0e;
@@ -7,7 +16,13 @@
   --text: #f4f4f5;
   --text-dim: #a1a1aa;
   --accent: #00ffff;
-  --accent-soft: rgba(0,255,255,0.12);
-  --accent-contrast: #000;
+  --accent-rgb: 0 255 255;
+  --accent-soft: rgb(var(--accent-rgb) / 0.12);
+  --accent-contrast: #000000;
 }
 .dark { color-scheme: dark; }
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+}
