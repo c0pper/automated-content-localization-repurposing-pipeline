@@ -20,6 +20,14 @@ export function jobAssetUrl(jobId: string, assetId: string): string {
   return `${API_BASE}/jobs/${encodeURIComponent(jobId)}/assets/${encodeURIComponent(assetId)}`;
 }
 
+/**
+ * Stable, unauthenticated URL for an asset behind a review token. Like
+ * `jobAssetUrl`, the backend 302s to a presigned URL; a revoked token 404s.
+ */
+export function reviewAssetUrl(token: string, assetId: string): string {
+  return `${API_BASE}/review/${encodeURIComponent(token)}/assets/${encodeURIComponent(assetId)}`;
+}
+
 let _csrfCounter = 0;
 function generateIdempotencyKey(): string {
   _csrfCounter += 1;

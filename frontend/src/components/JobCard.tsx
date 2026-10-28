@@ -2,6 +2,7 @@
 import { JobSummary } from "@/lib/types";
 import { NavLink } from "@/components/NavLink";
 import { useTranslation } from "@/lib/useTranslation";
+import { openReviewLink } from "@/lib/review";
 import type { JobLanguages } from "@/lib/useJobLanguages";
 
 export interface JobCardProps {
@@ -44,6 +45,7 @@ function formatLanguages(codes: string[]): string {
 
 export function JobCard({ job, languages }: JobCardProps) {
   const t = useTranslation();
+  const reviewHref = openReviewLink(job.review_url);
 
   return (
     <article className="bg-surface border border-border rounded-xl p-4 hover:border-accent/50 transition">
@@ -72,12 +74,10 @@ export function JobCard({ job, languages }: JobCardProps) {
         <dd>{languages ? formatLanguages(languages.targets) : "—"}</dd>
       </dl>
       {/* Partial/failed Jobs may already hold a review token; the quick link is for finished work only. */}
-      {job.status === "COMPLETED" && job.review_url && (
+      {job.status === "COMPLETED" && reviewHref && (
         <a
           className="mt-3 inline-block text-sm text-accent underline hover:opacity-80"
-          href={job.review_url}
-          target="_blank"
-          rel="noopener noreferrer"
+          href={reviewHref}
         >
           {t.openReview}
         </a>

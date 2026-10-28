@@ -214,6 +214,15 @@ export const en: Dict = {
   gateErrorInvalidSelection: "The selection is not valid for this Job.",
   gateErrorInvalidAmount: "The total amount was not accepted.",
   gateErrorGeneric: "The request could not be completed. Try again.",
+  reviewTitle: "Review",
+  reviewReadOnly: "Read-only review of this Job. Assets that are not rendered yet are not shown.",
+  reviewNotFound: "This review link was revoked or does not exist.",
+  reviewLoadFailed: "The review could not be loaded. Try again.",
+  reviewNoLink: "No active review link. Rotate to issue a new one.",
+  reviewLinkRotated: "New review link issued; the previous link no longer works.",
+  reviewLinkRevoked: "Review link revoked; old links now return not found.",
+  revokeConfirm: "Revoke the review link? Anyone using it will get \"not found\".",
+  reviewErrorNoAssets: "Nothing to review yet: no Base Clip or copy has been rendered.",
 };
 
 const esOverrides: Dict = {
@@ -396,6 +405,15 @@ const esOverrides: Dict = {
   gateErrorInvalidSelection: "La selección no es válida para este trabajo.",
   gateErrorInvalidAmount: "El importe total no fue aceptado.",
   gateErrorGeneric: "No se pudo completar la solicitud. Inténtalo de nuevo.",
+  reviewTitle: "Revisión",
+  reviewReadOnly: "Revisión de solo lectura de este trabajo. Los recursos aún no renderizados no se muestran.",
+  reviewNotFound: "Este enlace de revisión fue revocado o no existe.",
+  reviewLoadFailed: "No se pudo cargar la revisión. Inténtalo de nuevo.",
+  reviewNoLink: "No hay enlace de revisión activo. Rota para emitir uno nuevo.",
+  reviewLinkRotated: "Nuevo enlace de revisión emitido; el anterior ya no funciona.",
+  reviewLinkRevoked: "Enlace de revisión revocado; los enlaces antiguos devuelven \"no encontrado\".",
+  revokeConfirm: "¿Revocar el enlace de revisión? Quien lo use verá \"no encontrado\".",
+  reviewErrorNoAssets: "Aún no hay nada que revisar: no se ha renderizado ningún clip base ni texto.",
 };
 
 const deOverrides: Dict = {
@@ -578,6 +596,15 @@ const deOverrides: Dict = {
   gateErrorInvalidSelection: "Die Auswahl ist für diesen Auftrag ungültig.",
   gateErrorInvalidAmount: "Der Gesamtbetrag wurde nicht akzeptiert.",
   gateErrorGeneric: "Die Anfrage konnte nicht abgeschlossen werden. Versuche es erneut.",
+  reviewTitle: "Review",
+  reviewReadOnly: "Schreibgeschützte Ansicht dieses Auftrags. Noch nicht gerenderte Assets werden nicht angezeigt.",
+  reviewNotFound: "Dieser Review-Link wurde widerrufen oder existiert nicht.",
+  reviewLoadFailed: "Das Review konnte nicht geladen werden. Versuche es erneut.",
+  reviewNoLink: "Kein aktiver Review-Link. Rotieren, um einen neuen auszustellen.",
+  reviewLinkRotated: "Neuer Review-Link ausgestellt; der alte Link funktioniert nicht mehr.",
+  reviewLinkRevoked: "Review-Link widerrufen; alte Links liefern jetzt \"nicht gefunden\".",
+  revokeConfirm: "Review-Link widerrufen? Wer ihn nutzt, erhält \"nicht gefunden\".",
+  reviewErrorNoAssets: "Noch nichts zu prüfen: Es wurde noch kein Basis-Clip oder Text gerendert.",
 };
 
 export const es: Dict = { ...en, ...esOverrides };

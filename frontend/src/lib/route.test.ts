@@ -35,4 +35,10 @@ describe("parseRoute", () => {
   it("decodes URL-encoded job ids", () => {
     expect(parseRoute("/jobs/job%20a")).toEqual({ page: "jobDetail", jobId: "job a" });
   });
+
+  it("resolves /review/{token} to the read-only review page", () => {
+    expect(parseRoute("/review/tok_abc")).toEqual({ page: "review", token: "tok_abc" });
+    expect(parseRoute("/review/tok%2Eabc/")).toEqual({ page: "review", token: "tok.abc" });
+    expect(parseRoute("/review")).toEqual({ page: "dashboard" });
+  });
 });

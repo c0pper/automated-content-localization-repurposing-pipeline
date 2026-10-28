@@ -6,7 +6,8 @@ export type Route =
   | { page: "profile" }
   | { page: "newJob" }
   | { page: "jobDetail"; jobId: string }
-  | { page: "jobLocalization"; jobId: string };
+  | { page: "jobLocalization"; jobId: string }
+  | { page: "review"; token: string };
 
 function decode(part: string): string {
   try {
@@ -28,6 +29,7 @@ export function parseRoute(path: string): Route {
     if (sub === "localization") return { page: "jobLocalization", jobId };
     return { page: "jobDetail", jobId };
   }
+  if (root === "review" && id) return { page: "review", token: decode(id) };
   if (root === "profile") return { page: "profile" };
   return { page: "dashboard" };
 }

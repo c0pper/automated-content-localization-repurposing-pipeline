@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { jobStore } from "@/store";
 import { interpolate, useTranslation } from "@/lib/useTranslation";
-import { jobAssetUrl } from "@/lib/api";
+import { errorMessage, isApiError, jobAssetUrl } from "@/lib/api";
+import { openReviewLink } from "@/lib/review";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import type { Clip } from "@/lib/types";
 import type { Dict } from "@/lib/i18n";
@@ -180,22 +181,82 @@ export function JobDetailPage({ jobId }: { jobId: string }) {
             {t.openGate}
           </a>
         </section>
-      ) : job.review_url ? (
-        <section className="bg-surface rounded-xl border border-border p-6">
-          <h3 className="font-semibold text-sm">{t.reviewLink}</h3>
-          <p className="text-text-dim text-sm">
-            <a
-              href={job.review_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-accent hover:underline"
-            >
-              {job.review_url}
-            </a>
-          </p>
-        </section>
       ) : null}
+
+      <ReviewLinkSection jobId={job.job_id} reviewUrl={job.review_url} t={t} />
     </div>
+  );
+}
+
+/** Error codes from POST/DELETE /review-link with a specific explanation. */
+const REVIEW_ERROR_KEYS: Record<string, string> = {
+  no_reviewable_assets: "reviewErrorNoAssets",
+};
+
+/**
+ * Review access controls (issue #32). Shown for any Job status: partial and
+ * failed Jobs can still be reviewed. Rotate issues a new token (the old one
+ * stops working); Revoke removes it, so old links 404.
+ */
+function ReviewLinkSection({ jobId, reviewUrl, t }: { jobId: string; reviewUrl: string | null; t: Dict }) {
+  const busy = useStore(jobStore, (s) => s.busy);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const href = openReviewLink(reviewUrl);
+
+  const run = async (action: () => Promise<unknown>, doneKey: string) => {
+    setNotice(null);
+    setError(null);
+    try {
+      await action();
+      setNotice(t[doneKey]);
+    } catch (e) {
+      const key = isApiError(e) ? REVIEW_ERROR_KEYS[e.code] : undefined;
+      setError(key ? t[key] : errorMessage(e, t.gateErrorGeneric));
+    }
+  };
+
+  const rotate = () => run(() => jobStore.getState().rotateReviewLink(jobId), "reviewLinkRotated");
+  const revoke = () => {
+    if (!window.confirm(t.revokeConfirm)) return;
+    void run(() => jobStore.getState().revokeReviewLink(jobId), "reviewLinkRevoked");
+  };
+
+  return (
+    <section aria-labelledby="job-review-link" className="bg-surface rounded-xl border border-border p-6 space-y-3 text-sm">
+      <h3 id="job-review-link" className="font-semibold text-sm">{t.reviewLink}</h3>
+      {href ? (
+        <p>
+          <a href={href} className="text-accent hover:underline">
+            {t.openReview}
+          </a>
+        </p>
+      ) : (
+        <p className="text-text-dim">{t.reviewNoLink}</p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => void rotate()}
+          disabled={busy}
+          className="rounded-lg bg-accent text-accent-contrast px-3 py-1.5 font-semibold disabled:opacity-50"
+        >
+          {t.rotate}
+        </button>
+        {href && (
+          <button
+            type="button"
+            onClick={revoke}
+            disabled={busy}
+            className="rounded-lg border border-red-400 text-red-400 px-3 py-1.5 font-semibold disabled:opacity-50"
+          >
+            {t.revoke}
+          </button>
+        )}
+      </div>
+      {notice && <p role="status" className="text-text-dim">{notice}</p>}
+      {error && <p role="alert" className="text-red-400">{error}</p>}
+    </section>
   );
 }
 
