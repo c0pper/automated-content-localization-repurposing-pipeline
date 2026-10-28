@@ -131,6 +131,17 @@ export const en: Dict = {
   apiKeyRotationPlaceholder: "Placeholder rotation triggered — regenerate the workspace token externally.",
   apiKeyClearPlaceholderMessage: "Placeholder clear triggered — the key was not changed.",
   jobBudgetOverview: "Job budget overview",
+  // #25 Job creation form / model overrides
+  newJob: "New job",
+  jobSource: "Source video",
+  sourceTypeUrl: "URL",
+  sourceTypeObject: "Silo object key",
+  videoUrl: "Video URL",
+  siloObjectKey: "Object key",
+  jobBudgetFromWorkspace: "set in Workspace Settings; applies to this Job",
+  modelOverrides: "Model overrides",
+  invalidModel: "One of the selected models is not in the curated list. Pick another model and try again.",
+  jobSubmitFailed: "Could not create the job.",
 };
 
 const esOverrides: Dict = {
@@ -231,6 +242,16 @@ const esOverrides: Dict = {
   apiKeyClearPlaceholderMessage: "Borrado de marcador activado — la clave no se ha modificado.",
   jobBudgetOverview: "Resumen del presupuesto por trabajo",
   voiceProfileMissing: "Falta el perfil de voz — la localización fallará.",
+  // #25 Job creation form / model overrides
+  newJob: "Nuevo trabajo",
+  jobSource: "Vídeo de origen",
+  sourceTypeObject: "Clave de objeto en Silo",
+  videoUrl: "URL del vídeo",
+  siloObjectKey: "Clave de objeto",
+  jobBudgetFromWorkspace: "definido en la configuración del workspace; se aplica a este trabajo",
+  modelOverrides: "Modelos personalizados",
+  invalidModel: "Uno de los modelos seleccionados no está en la lista permitida. Elige otro modelo e inténtalo de nuevo.",
+  jobSubmitFailed: "No se pudo crear el trabajo.",
 };
 
 const deOverrides: Dict = {
@@ -331,6 +352,16 @@ const deOverrides: Dict = {
   apiKeyClearPlaceholderMessage: "Platzhalter-Löschung ausgelöst — der Schlüssel wurde nicht geändert.",
   jobBudgetOverview: "Übersicht Auftragsbudget",
   voiceProfileMissing: "Stimmprofil fehlt — Lokalisierung schlägt fehl.",
+  // #25 Job creation form / model overrides
+  newJob: "Neuer Auftrag",
+  jobSource: "Quellvideo",
+  sourceTypeObject: "Silo-Objektschlüssel",
+  videoUrl: "Video-URL",
+  siloObjectKey: "Objektschlüssel",
+  jobBudgetFromWorkspace: "in den Workspace-Einstellungen festgelegt; gilt für diesen Auftrag",
+  modelOverrides: "Modellauswahl",
+  invalidModel: "Eines der gewählten Modelle ist nicht in der kuratierten Liste. Wähle ein anderes Modell und versuche es erneut.",
+  jobSubmitFailed: "Der Auftrag konnte nicht erstellt werden.",
 };
 
 export const es: Dict = { ...en, ...esOverrides };

@@ -4,6 +4,7 @@ import { Nav } from "./components/Nav";
 import { DashboardPage } from "./pages/DashboardPage";
 import { JobsPage } from "./pages/JobsPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
+import { NewJobPage } from "./pages/NewJobPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { authStore } from "./store";
 
@@ -43,7 +44,9 @@ export default function App() {
   }
 
   const page =
-    path.startsWith("/jobs/") ? (
+    path === "/jobs/new" ? (
+      <NewJobPage onCreated={(id) => navigate(`/jobs/${id}`)} />
+    ) : path.startsWith("/jobs/") ? (
       <JobDetailPage jobId={path.split("/jobs/")[1] ?? ""} />
     ) : path.startsWith("/jobs") ? (
       <JobsPage />
