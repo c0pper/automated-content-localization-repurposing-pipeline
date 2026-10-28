@@ -42,6 +42,11 @@ const ERROR_KEYS: Record<string, Entry> = {
   source_too_large: "errorSourceTooLarge",
   unsafe_source: "errorUnsafeSource",
   invalid_object_key: "errorInvalidObjectKey",
+  // Source Upload (lib/sourceUpload.ts)
+  upload_size_mismatch: "errorUploadSizeMismatch",
+  upload_failed: "errorUploadFailed",
+  upload_not_in_progress: "errorUploadFailed",
+  upload_parts_invalid: "errorUploadFailed",
   unsupported_language: "errorUnsupportedLanguage",
   invalid_language: "errorUnsupportedLanguage",
   unsupported_source_language: "errorUnsupportedSourceLanguage",

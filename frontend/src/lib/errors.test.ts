@@ -14,6 +14,10 @@ describe("error code messages", () => {
     "invalid_model",
     "caption_alignment_unavailable",
     "no_reviewable_assets",
+    "source_too_large",
+    "unsupported_media_format",
+    "upload_size_mismatch",
+    "upload_failed",
   ])("has a specific message for %s", (code) => {
     expect(errorCodeText(en, code)).not.toContain("error code");
     expect(errorCodeText(en, code, "job")).not.toContain("error code");
