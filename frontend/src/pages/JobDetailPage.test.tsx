@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { JobDetailPage } from "@/pages/JobDetailPage";
 import { jobStore, profileStore } from "@/store";
 import type { Job } from "@/lib/types";
@@ -301,6 +301,101 @@ describe("JobDetailPage", () => {
     render(<JobDetailPage jobId="job_42" />);
     await screen.findByRole("article", { name: "Segment 7" });
     expect(screen.queryByRole("link", { name: "Open Selection Gate" })).toBeNull();
+  });
+
+  describe("review link", () => {
+    const callTo = (method: string) =>
+      mockFetch.mock.calls.find(
+        ([url, init]) => String(url).includes("/api/jobs/job_42/review-link") && init?.method === method,
+      );
+
+    it("links to the read-only review view for the job's current token", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse(makeJob()));
+      render(<JobDetailPage jobId="job_42" />);
+
+      const region = await screen.findByRole("region", { name: "Review link" });
+      const link = within(region).getByRole("link", { name: "Open review" });
+      expect(link.getAttribute("href")).toBe("#/review/tok_abc");
+    });
+
+    it("offers the review link for a partial or failed job too", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse(makeJob({ status: "FAILED" })));
+      render(<JobDetailPage jobId="job_42" />);
+
+      const region = await screen.findByRole("region", { name: "Review link" });
+      expect(within(region).getByRole("link", { name: "Open review" }).getAttribute("href")).toBe(
+        "#/review/tok_abc",
+      );
+    });
+
+    it("rotates the link with an idempotent POST and shows the new token", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse(makeJob()));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          review_url: "http://localhost:8000/api/review/tok_new",
+          rotated_at: "2026-10-28T09:00:00Z",
+        }),
+      );
+      render(<JobDetailPage jobId="job_42" />);
+
+      const region = await screen.findByRole("region", { name: "Review link" });
+      fireEvent.click(within(region).getByRole("button", { name: "Rotate" }));
+
+      await waitFor(() =>
+        expect(within(region).getByRole("link", { name: "Open review" }).getAttribute("href")).toBe(
+          "#/review/tok_new",
+        ),
+      );
+      const [, init] = callTo("POST")!;
+      expect(new Headers(init.headers).get("Idempotency-Key")).toBeTruthy();
+      expect(region.textContent).toContain("the previous link no longer works");
+    });
+
+    it("asks for confirmation before revoking and does nothing when cancelled", async () => {
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+      mockFetch.mockResolvedValueOnce(jsonResponse(makeJob()));
+      render(<JobDetailPage jobId="job_42" />);
+
+      const region = await screen.findByRole("region", { name: "Review link" });
+      fireEvent.click(within(region).getByRole("button", { name: "Revoke" }));
+
+      expect(confirm).toHaveBeenCalled();
+      expect(callTo("DELETE")).toBeUndefined();
+      expect(within(region).getByRole("link", { name: "Open review" })).toBeTruthy();
+      confirm.mockRestore();
+    });
+
+    it("revokes the link with an idempotent DELETE once confirmed and removes it", async () => {
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+      mockFetch.mockResolvedValueOnce(jsonResponse(makeJob()));
+      mockFetch.mockResolvedValueOnce(new Response(null, { status: 204 }));
+      render(<JobDetailPage jobId="job_42" />);
+
+      const region = await screen.findByRole("region", { name: "Review link" });
+      fireEvent.click(within(region).getByRole("button", { name: "Revoke" }));
+
+      await waitFor(() => expect(within(region).queryByRole("link", { name: "Open review" })).toBeNull());
+      const [, init] = callTo("DELETE")!;
+      expect(new Headers(init.headers).get("Idempotency-Key")).toBeTruthy();
+      expect(region.textContent).toContain("old links now return not found");
+      expect(within(region).queryByRole("button", { name: "Revoke" })).toBeNull();
+      confirm.mockRestore();
+    });
+
+    it("explains when there is nothing reviewable to issue a link for", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse(makeJob({ review_url: null })));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ detail: { code: "no_reviewable_assets", message: "x", details: {} } }, 409),
+      );
+      render(<JobDetailPage jobId="job_42" />);
+
+      const region = await screen.findByRole("region", { name: "Review link" });
+      expect(region.textContent).toContain("No active review link");
+      fireEvent.click(within(region).getByRole("button", { name: "Rotate" }));
+
+      expect(await within(region).findByRole("alert")).toBeTruthy();
+      expect(region.textContent).toContain("Nothing to review yet");
+    });
   });
 
   it("shows a not-found message when the job does not exist", async () => {

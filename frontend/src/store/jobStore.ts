@@ -58,8 +58,15 @@ export type JobStore = {
   reset: () => void;
 };
 
+/** State patch clearing `busy` and mirroring a new review_url onto the selected Job. */
+function withReviewUrl(selectedJob: Job | null, jobId: string, reviewUrl: string | null) {
+  return selectedJob?.job_id === jobId
+    ? { busy: false, selectedJob: { ...selectedJob, review_url: reviewUrl } }
+    : { busy: false };
+}
+
 export const createJobStore = () =>
-  createStore<JobStore>((set) => ({
+  createStore<JobStore>((set, get) => ({
     jobs: [],
     nextCursor: null,
     loading: false,
@@ -202,7 +209,7 @@ export const createJobStore = () =>
       set({ busy: true, error: null });
       try {
         const res = await api.post<{ review_url: string; rotated_at: string }>(`/jobs/${jobId}/review-link`);
-        set({ busy: false });
+        set(withReviewUrl(get().selectedJob, jobId, res.review_url));
         return res;
       } catch (e) {
         set({ busy: false });
@@ -214,7 +221,7 @@ export const createJobStore = () =>
       set({ busy: true, error: null });
       try {
         await api.delete(`/jobs/${jobId}/review-link`);
-        set({ busy: false });
+        set(withReviewUrl(get().selectedJob, jobId, null));
       } catch (e) {
         set({ busy: false });
         throw e;

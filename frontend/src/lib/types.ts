@@ -74,7 +74,7 @@ export interface Job {
   created_at: string | null;
   updated_at: string | null;
   expires_at: string | null;
-  review_url: string;
+  review_url: string | null;
   segments: Clip[];
   content: { linkedin_post: string; newsletter: string };
   copy_origin: CopyOrigin;
@@ -189,17 +189,27 @@ export interface Purge {
   error: string | null;
 }
 
+/** One Clip in a review manifest; asset URLs point at `/api/review/{token}/assets/{id}`. */
+export interface ReviewSegment {
+  segment_id: number;
+  hook_title: string;
+  caption: string;
+  video_asset_url: string | null;
+  localized_assets: Record<string, string>;
+  localized_copy: Record<string, { hook_title: string; caption: string }>;
+}
+
+/** GET /api/review/{token}: read-only view of a Job, for any Job status. */
 export interface ReviewManifest {
   job_id: string;
-  status: string;
-  review_url: string;
-  assets: Array<{
-    asset_id: string;
-    kind: string;
-    segment_id: number | null;
-    language: string | null;
-    url: string;
-  }>;
+  status: Job["status"];
+  created_at: string | null;
+  source_language: SourceLanguage | null;
+  target_languages: string[];
+  lip_sync: boolean;
+  segments: ReviewSegment[];
+  content: { linkedin_post: string; newsletter: string } | null;
+  copy_origin: CopyOrigin | null;
 }
 
 export interface ApiErrorDetail {

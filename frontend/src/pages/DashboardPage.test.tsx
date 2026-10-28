@@ -109,7 +109,7 @@ describe("DashboardPage", () => {
 
     await screen.findByText("job_done");
     const link = within(card("job_done")).getByRole("link", { name: "Open review" });
-    expect(link.getAttribute("href")).toBe(reviewUrl);
+    expect(link.getAttribute("href")).toBe("#/review/tok_done");
     expect(within(card("job_partial")).queryByRole("link", { name: "Open review" })).toBeNull();
     expect(within(card("job_failed")).queryByRole("link", { name: "Open review" })).toBeNull();
     expect(screen.queryByText(/tok_partial|tok_failed/)).toBeNull();
