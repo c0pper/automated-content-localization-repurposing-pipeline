@@ -6,11 +6,12 @@ import { JobsPage } from "./pages/JobsPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { authStore } from "./store";
+import { parseRoute } from "./lib/route";
 
 export default function App() {
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
-  const [path, setPath] = useState("/dashboard");
+  const [path, setPath] = useState(() => window.location.hash.replace(/^#/, "") || "/dashboard");
 
   useEffect(() => {
     void (async () => {
@@ -42,12 +43,14 @@ export default function App() {
     return <AuthGate onAuthed={() => setAuthed(true)} />;
   }
 
+  const route = parseRoute(path);
   const page =
-    path.startsWith("/jobs/") ? (
-      <JobDetailPage jobId={path.split("/jobs/")[1] ?? ""} />
-    ) : path.startsWith("/jobs") ? (
+    route.page === "jobDetail" || route.page === "jobLocalization" ? (
+      // jobLocalization renders the detail page until the Selection Gate page (#28) lands.
+      <JobDetailPage jobId={route.jobId} />
+    ) : route.page === "jobs" ? (
       <JobsPage />
-    ) : path.startsWith("/profile") ? (
+    ) : route.page === "profile" ? (
       <ProfilePage />
     ) : (
       <DashboardPage />
