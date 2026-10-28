@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { JobDetailPage } from "@/pages/JobDetailPage";
-import { jobStore, profileStore } from "@/store";
+import { jobStore } from "@/store";
 import type { Job } from "@/lib/types";
 
 function makeJob(overrides: Partial<Job> = {}): Job {
@@ -86,7 +86,6 @@ describe("JobDetailPage", () => {
       jsonResponse({ detail: { code: "not_found", message: "nope", details: {} } }, 404),
     );
     jobStore.getState().reset();
-    profileStore.setState({ workspace: null, loading: false, error: null, notice: null });
   });
 
   afterEach(() => {
@@ -97,13 +96,13 @@ describe("JobDetailPage", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse(makeJob()));
     render(<JobDetailPage jobId="job_42" />);
 
-    const card = await screen.findByRole("article", { name: "Segment 7" });
+    const card = await screen.findByRole("article", { name: "Clip 7" });
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toEqual(expect.stringContaining("/api/jobs/job_42"));
     expect(init).toMatchObject({ method: "GET", credentials: "include" });
 
     const c = within(card);
-    expect(c.getByText("Segment 7")).toBeTruthy();
+    expect(c.getByText("Clip 7")).toBeTruthy();
     expect(c.getByText("00:02:14 – 00:03:05")).toBeTruthy();
     expect(c.getByText("Why 90% of B2B SaaS Ads Fail")).toBeTruthy();
     expect(c.getByText("Stop wasting budget on broad audiences...")).toBeTruthy();
@@ -119,7 +118,7 @@ describe("JobDetailPage", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse(makeJob()));
     render(<JobDetailPage jobId="job_42" />);
 
-    const card = await screen.findByRole("article", { name: "Segment 7" });
+    const card = await screen.findByRole("article", { name: "Clip 7" });
     const c = within(card);
     const base = c.getByLabelText("Base clip");
     expect(base.tagName).toBe("VIDEO");
@@ -142,7 +141,7 @@ describe("JobDetailPage", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse(job));
     render(<JobDetailPage jobId="job_42" />);
 
-    const card = await screen.findByRole("article", { name: "Segment 7" });
+    const card = await screen.findByRole("article", { name: "Clip 7" });
     const c = within(card);
     expect(c.getByLabelText("Localized clip (es)")).toBeTruthy();
     expect(c.queryByLabelText("Localized clip (de)")).toBeNull();
@@ -153,7 +152,7 @@ describe("JobDetailPage", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse(makeJob({ lip_sync: true })));
     render(<JobDetailPage jobId="job_42" />);
 
-    const card = await screen.findByRole("article", { name: "Segment 7" });
+    const card = await screen.findByRole("article", { name: "Clip 7" });
     const video = within(card).getByLabelText("Localized clip (es)");
     const copy = within(card).getByRole("group", { name: "Localized copy (es)" });
     expect(video.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -167,7 +166,7 @@ describe("JobDetailPage", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse(makeJob({ lip_sync: false })));
     render(<JobDetailPage jobId="job_42" />);
 
-    const card = await screen.findByRole("article", { name: "Segment 7" });
+    const card = await screen.findByRole("article", { name: "Clip 7" });
     expect(card.textContent).toContain("Dubbed with your Voice Profile");
     expect(card.textContent).not.toContain("lip-sync applied");
   });
@@ -180,7 +179,7 @@ describe("JobDetailPage", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse(job));
     render(<JobDetailPage jobId="job_42" />);
 
-    const card = await screen.findByRole("article", { name: "Segment 7" });
+    const card = await screen.findByRole("article", { name: "Clip 7" });
     const c = within(card);
     expect(c.queryByLabelText("Base clip")).toBeNull();
     expect(card.querySelector("video")).toBeNull();
@@ -191,7 +190,7 @@ describe("JobDetailPage", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse(makeJob()));
     render(<JobDetailPage jobId="job_42" />);
 
-    const card = await screen.findByRole("article", { name: "Segment 7" });
+    const card = await screen.findByRole("article", { name: "Clip 7" });
     const copy = within(within(card).getByRole("group", { name: "Localized copy (es)" }));
     expect(copy.getByText("Por qué fallan el 90% de los anuncios B2B SaaS")).toBeTruthy();
     expect(copy.getByText("Deja de gastar presupuesto en audiencias amplias...")).toBeTruthy();
@@ -206,16 +205,19 @@ describe("JobDetailPage", () => {
 
     const costs = await screen.findByRole("region", { name: "Costs" });
     expect(costs.textContent).toContain("Job budget");
-    expect(costs.textContent).toContain("25.00");
+    expect(costs.textContent).toContain("$25.00");
     expect(costs.textContent).toContain("Spent");
-    expect(costs.textContent).toContain("3.40");
+    expect(costs.textContent).toContain("$3.40");
     expect(costs.textContent).toContain("Workspace remaining");
-    expect(costs.textContent).toContain("471.60");
+    expect(costs.textContent).toContain("$471.60");
 
     const selection = screen.getByRole("region", { name: "Selection" });
     expect(selection.textContent).toMatch(/Clips:?\s*7/);
     expect(selection.textContent).toMatch(/Languages:?\s*es/);
-    expect(selection.textContent).toMatch(/Confirmed total:?\s*1\.250000/);
+    expect(selection.textContent).toMatch(/Confirmed total:?\s*\$1\.25/);
+    // Dates follow the UI language (en) in the viewer's time zone (UTC in tests).
+    expect(selection.textContent).toMatch(/Confirmed at:?\s*Oct 27, 2026, 10:30\sAM/);
+    expect(screen.getByText(/Created\s+Oct 27, 2026, 10:00\sAM/)).toBeTruthy();
 
     expect(screen.getByText("COMPLETED")).toBeTruthy();
     expect(mockFetch.mock.calls.some(([u]) => String(u).includes("/selection"))).toBe(false);
@@ -237,6 +239,41 @@ describe("JobDetailPage", () => {
     expect(selection.textContent).toContain("None selected yet");
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("voice_profile_missing");
+    expect(alert.textContent).toContain("Voice profile is missing — localization will fail.");
+    expect(alert.textContent).toContain("This failure can be retried.");
+    expect(alert.textContent).not.toContain("No voice profile");
+  });
+
+  it("never shows backend message text, and names unknown failure codes generically", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(
+        makeJob({
+          status: "FAILED",
+          error: { code: "some_new_code", message: "raw backend text", retryable: false },
+        }),
+      ),
+    );
+    render(<JobDetailPage jobId="job_42" />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Something went wrong (error code: some_new_code).");
+    expect(alert.textContent).toContain("This failure cannot be retried.");
+    expect(alert.textContent).not.toContain("raw backend text");
+  });
+
+  it.each([
+    ["quality_floor_not_met", "Fewer than three Clips reached the quality floor"],
+    ["insufficient_job_budget", "exceed this Job's budget"],
+    ["workspace_budget_exceeded", "monthly Workspace Budget would be exceeded"],
+  ])("explains a %s failure by its code", async (code, expected) => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(makeJob({ status: "FAILED", error: { code, message: "raw backend text", retryable: false } })),
+    );
+    render(<JobDetailPage jobId="job_42" />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(expected);
+    expect(alert.textContent).not.toContain("raw backend text");
   });
 
   it("explains a lip-sync failure on a failed job without implying a fallback", async () => {
@@ -299,7 +336,7 @@ describe("JobDetailPage", () => {
   it("does not offer the Selection Gate once the job has moved on", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse(makeJob()));
     render(<JobDetailPage jobId="job_42" />);
-    await screen.findByRole("article", { name: "Segment 7" });
+    await screen.findByRole("article", { name: "Clip 7" });
     expect(screen.queryByRole("link", { name: "Open Selection Gate" })).toBeNull();
   });
 
@@ -395,6 +432,30 @@ describe("JobDetailPage", () => {
 
       expect(await within(region).findByRole("alert")).toBeTruthy();
       expect(region.textContent).toContain("Nothing to review yet");
+    });
+
+    it("retries a rotate that failed on the network with the same Idempotency-Key", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse(makeJob()));
+      mockFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ review_url: "http://localhost:8000/api/review/tok_new", rotated_at: "2026-10-28T09:00:00Z" }),
+      );
+      render(<JobDetailPage jobId="job_42" />);
+
+      const region = await screen.findByRole("region", { name: "Review link" });
+      fireEvent.click(within(region).getByRole("button", { name: "Rotate" }));
+      const alert = await within(region).findByRole("alert");
+      expect(alert.textContent).toBe("The request could not be completed. Try again.");
+      expect(alert.textContent).not.toContain("Failed to fetch");
+
+      fireEvent.click(within(region).getByRole("button", { name: "Rotate" }));
+      await waitFor(() =>
+        expect(within(region).getByRole("link", { name: "Open review" }).getAttribute("href")).toBe("#/review/tok_new"),
+      );
+      const posts = mockFetch.mock.calls.filter(([, init]) => init?.method === "POST");
+      expect(posts).toHaveLength(2);
+      const key = (i: number) => new Headers(posts[i][1].headers).get("Idempotency-Key");
+      expect(key(1)).toBe(key(0));
     });
   });
 

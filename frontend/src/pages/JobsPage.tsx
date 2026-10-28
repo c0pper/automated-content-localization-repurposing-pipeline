@@ -4,6 +4,8 @@ import { useStore } from "zustand";
 import { jobStore } from "@/store";
 import { JobCard } from "@/components/JobCard";
 import { useTranslation } from "@/lib/useTranslation";
+import { useJobLanguages } from "@/lib/useJobLanguages";
+import { statusLabel } from "@/lib/format";
 import type { JobStatus } from "@/lib/types";
 
 const STATUSES: JobStatus[] = [
@@ -24,6 +26,7 @@ export function JobsPage() {
   const loadJobs = jobStore.getState().listJobs;
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [keyword, setKeyword] = useState("");
+  const languages = useJobLanguages(jobs.map((j) => j.job_id));
 
   useEffect(() => {
     void (async () => {
@@ -37,11 +40,14 @@ export function JobsPage() {
     } catch { /* store */ }
   };
 
-  // The backend has no keyword filter: search runs client-side over the loaded page(s).
+  // The backend has no keyword filter: search runs client-side over the loaded page(s),
+  // matching id, status, stage and the Hooks of each Job's Clips (from the per-job details).
   const needle = keyword.trim().toLowerCase();
   const visibleJobs = needle
     ? jobs.filter((j) =>
-        [j.job_id, j.status, j.stage ?? ""].some((field) => field.toLowerCase().includes(needle)),
+        [j.job_id, j.status, j.stage ?? "", ...(languages[j.job_id]?.hooks ?? [])].some((field) =>
+          field.toLowerCase().includes(needle),
+        ),
       )
     : jobs;
 
@@ -68,7 +74,7 @@ export function JobsPage() {
           >
             <option value="">{t.statusAll}</option>
             {STATUSES.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{statusLabel(t, s)}</option>
             ))}
           </select>
         </label>
@@ -81,7 +87,7 @@ export function JobsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {visibleJobs.map((job) => (
-            <JobCard key={job.job_id} job={job} />
+            <JobCard key={job.job_id} job={job} languages={languages[job.job_id]} />
           ))}
         </div>
       )}

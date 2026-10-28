@@ -1,5 +1,6 @@
 /** Job card for dashboard/jobs list. */
-import { JobSummary } from "@/lib/types";
+import type { JobSummary } from "@/lib/types";
+import { EMPTY_VALUE, formatDateTime, joinOrEmpty, orEmpty, statusLabel } from "@/lib/format";
 import { NavLink } from "@/components/NavLink";
 import { useTranslation } from "@/lib/useTranslation";
 import { openReviewLink } from "@/lib/review";
@@ -25,22 +26,8 @@ const statusColor: Record<JobSummary["status"], string> = {
   CANCELLED: "bg-gray-900/20 text-gray-400",
 };
 
-/** Human-readable status label, e.g. AWAITING_SELECTION -> "Awaiting selection". */
-function statusLabel(status: JobSummary["status"]): string {
-  const words = status.toLowerCase().replace(/_/g, " ");
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-/** Locale-independent UTC timestamp, e.g. "2026-10-27 14:05 UTC". */
-export function formatCreatedAt(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
-}
-
 function formatLanguages(codes: string[]): string {
-  return codes.length ? codes.map((c) => c.toUpperCase()).join(", ") : "—";
+  return joinOrEmpty(codes.map((c) => c.toUpperCase()));
 }
 
 export function JobCard({ job, languages }: JobCardProps) {
@@ -51,7 +38,7 @@ export function JobCard({ job, languages }: JobCardProps) {
     <article className="bg-surface border border-border rounded-xl p-4 hover:border-accent/50 transition">
       <div className="flex items-start justify-between gap-2 mb-1">
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${statusColor[job.status]}`}>
-          {statusLabel(job.status)}
+          {statusLabel(t, job.status)}
         </span>
         <NavLink to={`/jobs/${job.job_id}`} size="text-sm" underline="hover">
           {t.details}
@@ -63,15 +50,15 @@ export function JobCard({ job, languages }: JobCardProps) {
           <code className="text-text">{job.job_id}</code>
         </dd>
         <dt className="text-text-dim">{t.stage}</dt>
-        <dd>{job.stage ?? "—"}</dd>
+        <dd>{orEmpty(job.stage)}</dd>
         <dt className="text-text-dim">{t.createdAt}</dt>
         <dd>
-          <time dateTime={job.created_at ?? undefined}>{formatCreatedAt(job.created_at)}</time>
+          <time dateTime={job.created_at ?? undefined}>{formatDateTime(job.created_at, t.locale)}</time>
         </dd>
         <dt className="text-text-dim">{t.sourceLanguage}</dt>
-        <dd>{languages?.source ? languages.source.toUpperCase() : "—"}</dd>
+        <dd>{languages?.source ? languages.source.toUpperCase() : EMPTY_VALUE}</dd>
         <dt className="text-text-dim">{t.targetLanguages}</dt>
-        <dd>{languages ? formatLanguages(languages.targets) : "—"}</dd>
+        <dd>{languages ? formatLanguages(languages.targets) : EMPTY_VALUE}</dd>
       </dl>
       {/* Partial/failed Jobs may already hold a review token; the quick link is for finished work only. */}
       {job.status === "COMPLETED" && reviewHref && (

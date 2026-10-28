@@ -1,5 +1,5 @@
 /**
- * Resolve source/target languages for a list of Job summaries.
+ * Resolve source/target languages (and Clip Hooks) for a list of Job summaries.
  *
  * GET /api/jobs summaries do not carry languages (backend JobSummary has only
  * job_id/status/stage/created_at/expires_at/review_url) and backend changes are
@@ -14,6 +14,8 @@ import type { Job } from "@/lib/types";
 export interface JobLanguages {
   source: string | null;
   targets: string[];
+  /** Hook of every Clip in the Job, for keyword search (#24). */
+  hooks: string[];
 }
 
 /** Map of job_id -> languages (undefined = still loading, null = lookup failed). */
@@ -42,6 +44,7 @@ export function useJobLanguages(jobIds: string[]): JobLanguagesMap {
           (job): JobLanguages | null => ({
             source: job.source_language?.code ?? null,
             targets: job.target_languages ?? [],
+            hooks: (job.segments ?? []).map((clip) => clip.hook_title).filter(Boolean),
           }),
           () => null,
         )

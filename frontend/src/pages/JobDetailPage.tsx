@@ -3,17 +3,14 @@ import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { jobStore } from "@/store";
 import { interpolate, useTranslation } from "@/lib/useTranslation";
-import { errorMessage, isApiError, jobAssetUrl } from "@/lib/api";
+import { baseAssetId, jobAssetUrl, localizedAssetId } from "@/lib/api";
+import { errorCodeText, errorText } from "@/lib/errors";
+import { EMPTY_VALUE, formatDateTime, joinOrEmpty, orEmpty } from "@/lib/format";
+import { formatUsd } from "@/lib/money";
 import { openReviewLink } from "@/lib/review";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import type { Clip } from "@/lib/types";
 import type { Dict } from "@/lib/i18n";
-
-/** Job failure codes with a specific explanation (no fallback happens for these). */
-const JOB_ERROR_KEYS: Record<string, string> = {
-  lip_sync_unavailable: "jobErrorLipSync",
-  caption_alignment_unavailable: "jobErrorCaptionAlignment",
-};
 
 export function JobDetailPage({ jobId }: { jobId: string }) {
   const t = useTranslation();
@@ -57,7 +54,7 @@ export function JobDetailPage({ jobId }: { jobId: string }) {
     <div className="space-y-6">
       <header>
         <h2 className="text-2xl font-bold text-accent">{job.job_id}</h2>
-        <p className="text-text-dim">{t.created} {job.created_at ?? "—"}</p>
+        <p className="text-text-dim">{t.created} {formatDateTime(job.created_at, t.locale)}</p>
       </header>
 
       {/* Job status and overall info */}
@@ -69,21 +66,22 @@ export function JobDetailPage({ jobId }: { jobId: string }) {
           </div>
           <div>
             <dt className="text-text-dim">{t.stage}</dt>
-            <dd className="font-medium">{job.stage ?? "—"}</dd>
+            <dd className="font-medium">{orEmpty(job.stage)}</dd>
           </div>
           <div>
             <dt className="text-text-dim">{t.sourceLanguage}</dt>
-            <dd className="text-accent font-medium">{job.source_language?.code ?? "—"}</dd>
+            <dd className="text-accent font-medium">{orEmpty(job.source_language?.code)}</dd>
           </div>
           <div>
             <dt className="text-text-dim">{t.targetLanguages}</dt>
-            <dd className="font-medium">{job.target_languages.join(", ") || "—"}</dd>
+            <dd className="font-medium">{joinOrEmpty(job.target_languages)}</dd>
           </div>
         </dl>
         {job.error && (
           <div role="alert" className="mt-3 text-sm text-red-400">
-            <strong>{t.jobError}:</strong> <code>{job.error.code}</code> — {job.error.message}
-            {JOB_ERROR_KEYS[job.error.code] && <p>{t[JOB_ERROR_KEYS[job.error.code]]}</p>}
+            <strong>{t.jobError}:</strong> <code>{job.error.code}</code>
+            <p>{errorCodeText(t, job.error.code, "job")}</p>
+            <p>{job.error.retryable ? t.jobErrorRetryable : t.jobErrorNotRetryable}</p>
           </div>
         )}
       </section>
@@ -95,20 +93,20 @@ export function JobDetailPage({ jobId }: { jobId: string }) {
           <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
             <div>
               <dt className="text-text-dim">{t.jobBudget}</dt>
-              <dd className="font-medium">{job.cost.job_budget_usd}</dd>
+              <dd className="font-medium">{formatUsd(job.cost.job_budget_usd)}</dd>
             </div>
             <div>
               <dt className="text-text-dim">{t.spent}</dt>
-              <dd className="font-medium">{job.cost.spent_usd}</dd>
+              <dd className="font-medium">{formatUsd(job.cost.spent_usd)}</dd>
             </div>
             <div>
               <dt className="text-text-dim">{t.workspaceRemaining}</dt>
-              <dd className="font-medium">{job.cost.workspace_remaining_usd}</dd>
+              <dd className="font-medium">{formatUsd(job.cost.workspace_remaining_usd)}</dd>
             </div>
             {job.cost.projected_localization_usd != null && (
               <div>
                 <dt className="text-text-dim">{t.projectedLocalization}</dt>
-                <dd className="font-medium">{job.cost.projected_localization_usd}</dd>
+                <dd className="font-medium">{formatUsd(job.cost.projected_localization_usd)}</dd>
               </div>
             )}
           </dl>
@@ -122,19 +120,19 @@ export function JobDetailPage({ jobId }: { jobId: string }) {
           <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <dt className="text-text-dim">{t.selectedClips}</dt>
-              <dd>{job.selection.segment_ids.join(", ") || "—"}</dd>
+              <dd>{joinOrEmpty(job.selection.segment_ids)}</dd>
             </div>
             <div>
               <dt className="text-text-dim">{t.selectedLanguages}</dt>
-              <dd>{job.selection.languages.join(", ") || "—"}</dd>
+              <dd>{joinOrEmpty(job.selection.languages)}</dd>
             </div>
             <div>
               <dt className="text-text-dim">{t.confirmedTotal}</dt>
-              <dd>{job.selection.expected_total_usd}</dd>
+              <dd>{formatUsd(job.selection.expected_total_usd)}</dd>
             </div>
             <div>
               <dt className="text-text-dim">{t.confirmedAt}</dt>
-              <dd>{job.selection.confirmed_at ?? "—"}</dd>
+              <dd>{formatDateTime(job.selection.confirmed_at, t.locale)}</dd>
             </div>
           </dl>
         ) : (
@@ -188,11 +186,6 @@ export function JobDetailPage({ jobId }: { jobId: string }) {
   );
 }
 
-/** Error codes from POST/DELETE /review-link with a specific explanation. */
-const REVIEW_ERROR_KEYS: Record<string, string> = {
-  no_reviewable_assets: "reviewErrorNoAssets",
-};
-
 /**
  * Review access controls (issue #32). Shown for any Job status: partial and
  * failed Jobs can still be reviewed. Rotate issues a new token (the old one
@@ -211,8 +204,7 @@ function ReviewLinkSection({ jobId, reviewUrl, t }: { jobId: string; reviewUrl: 
       await action();
       setNotice(t[doneKey]);
     } catch (e) {
-      const key = isApiError(e) ? REVIEW_ERROR_KEYS[e.code] : undefined;
-      setError(key ? t[key] : errorMessage(e, t.gateErrorGeneric));
+      setError(errorText(t, e));
     }
   };
 
@@ -284,7 +276,7 @@ function ClipAssets({ jobId, clip, sourceLanguage, lipSync, t }: ClipCardProps) 
     <div className="space-y-3 text-xs" aria-label={t.assets} role="group">
       {clip.video_asset_url && (
         <VideoPlayer
-          assetUrl={jobAssetUrl(jobId, `base_${clip.segment_id}`)}
+          assetUrl={jobAssetUrl(jobId, baseAssetId(clip))}
           label={t.baseClip}
           captionLanguage={sourceLanguage}
         />
@@ -297,7 +289,7 @@ function ClipAssets({ jobId, clip, sourceLanguage, lipSync, t }: ClipCardProps) 
           return (
             <div key={lang} className="border-t border-border pt-2 space-y-1">
               <VideoPlayer
-                assetUrl={jobAssetUrl(jobId, `clip_${clip.segment_id}_${lang}`)}
+                assetUrl={jobAssetUrl(jobId, localizedAssetId(clip, lang))}
                 label={interpolate(t.localizedClip, { lang })}
                 captionLanguage={lang}
               />
@@ -326,7 +318,7 @@ function ClipCard(props: ClipCardProps) {
   return (
     <article aria-labelledby={headingId} className="bg-surface-2 rounded-lg p-3 text-sm space-y-1">
       <h4 id={headingId} className="text-text-dim">
-        {t.segmentId} {clip.segment_id}
+        {t.clip} {clip.segment_id}
       </h4>
       <div className="text-text-dim text-xs">
         {clip.start_time} – {clip.end_time}
@@ -346,7 +338,7 @@ function ClipCard(props: ClipCardProps) {
       )}
       <div className="text-text-dim text-xs">
         <span>{t.rationale}: </span>
-        <span>{clip.rationale || "—"}</span>
+        <span>{clip.rationale || EMPTY_VALUE}</span>
       </div>
       <ClipAssets {...props} />
     </article>

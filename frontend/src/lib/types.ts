@@ -108,6 +108,9 @@ export interface CostCell {
   total_usd: string;
 }
 
+/** A cost cell's identity and total, as sent in a 409 `selection_price_changed`. */
+export type CostCellTotal = Pick<CostCell, "segment_id" | "language" | "total_usd">;
+
 export interface GatePayload {
   job_id: string;
   status: Job["status"];
@@ -190,7 +193,7 @@ export interface Purge {
 }
 
 /** One Clip in a review manifest; asset URLs point at `/api/review/{token}/assets/{id}`. */
-export interface ReviewSegment {
+export interface ReviewClip {
   segment_id: number;
   hook_title: string;
   caption: string;
@@ -207,7 +210,7 @@ export interface ReviewManifest {
   source_language: SourceLanguage | null;
   target_languages: string[];
   lip_sync: boolean;
-  segments: ReviewSegment[];
+  segments: ReviewClip[];
   content: { linkedin_post: string; newsletter: string } | null;
   copy_origin: CopyOrigin | null;
 }

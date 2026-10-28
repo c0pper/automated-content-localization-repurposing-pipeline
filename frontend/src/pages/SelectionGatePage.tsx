@@ -9,47 +9,16 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { useStore } from "zustand";
 import { jobStore } from "@/store";
-import { isApiError, isSelectionPriceChanged } from "@/lib/api";
-import { formatUsd, sumUsd } from "@/lib/money";
+import { isSelectionPriceChanged } from "@/lib/api";
+import { errorText } from "@/lib/errors";
+import { formatDateTime, orEmpty } from "@/lib/format";
+import { formatUsd } from "@/lib/money";
+import { isValidSelection, selectionTotal, type GateSelection } from "@/lib/selection";
 import { interpolate, useTranslation } from "@/lib/useTranslation";
 import type { Dict } from "@/lib/i18n";
-import type { CostCell, GatePayload, Job } from "@/lib/types";
+import type { GatePayload, Job } from "@/lib/types";
 
-type GateSegment = GatePayload["segments"][number];
-
-const ERROR_KEYS: Record<string, string> = {
-  invalid_state: "gateErrorInvalidState",
-  selection_expired: "gateErrorExpired",
-  selection_already_confirmed: "gateErrorAlreadyConfirmed",
-  invalid_selection: "gateErrorInvalidSelection",
-  invalid_amount: "gateErrorInvalidAmount",
-  not_found: "jobNotFound",
-};
-
-function errorText(t: Dict, err: unknown): string {
-  const key = isApiError(err) ? ERROR_KEYS[err.code] : undefined;
-  return t[key ?? "gateErrorGeneric"];
-}
-
-/** A rectangle selection: every selected Clip × every selected Language. */
-export interface GateSelection {
-  clips: ReadonlySet<number>;
-  languages: ReadonlySet<string>;
-}
-
-/** Valid when both sides are non-empty (a rectangle) or both are empty (skip localization). */
-export function isValidSelection(sel: GateSelection): boolean {
-  return (sel.clips.size === 0) === (sel.languages.size === 0);
-}
-
-/** Exact total of the selected cells as a wire USD string. */
-export function selectionTotal(matrix: CostCell[], sel: GateSelection): string {
-  return sumUsd(
-    matrix
-      .filter((c) => sel.clips.has(c.segment_id) && sel.languages.has(c.language))
-      .map((c) => c.total_usd),
-  );
-}
+type GateClip = GatePayload["segments"][number];
 
 function toggle<T>(set: ReadonlySet<T>, value: T): Set<T> {
   const next = new Set(set);
@@ -105,7 +74,7 @@ export function SelectionGatePage({ jobId }: { jobId: string }) {
         <p role="status" className="bg-surface rounded-xl border border-border p-4">
           {interpolate(t.selectionConfirmed, {
             status: confirmed.status,
-            stage: confirmed.stage ?? "—",
+            stage: orEmpty(confirmed.stage),
           })}
         </p>
         {backLink}
@@ -135,7 +104,6 @@ export function SelectionGatePage({ jobId }: { jobId: string }) {
       const changed = isSelectionPriceChanged(err);
       if (changed) {
         setPriceChangedTotal(changed.currentTotalUsd);
-        await reloadAfterPriceChange(jobId, changed.costMatrix);
       } else {
         setSubmitError(errorText(t, err));
       }
@@ -160,7 +128,7 @@ export function SelectionGatePage({ jobId }: { jobId: string }) {
         <p className="text-text-dim text-sm">{t.gateIntro}</p>
         {gate.expires_at && (
           <p className="text-text-dim text-xs">
-            {t.gateExpires}: <time dateTime={gate.expires_at}>{gate.expires_at}</time>
+            {t.gateExpires}: <time dateTime={gate.expires_at}>{formatDateTime(gate.expires_at, t.locale)}</time>
           </p>
         )}
         {backLink}
@@ -223,34 +191,7 @@ export function SelectionGatePage({ jobId }: { jobId: string }) {
   );
 }
 
-/**
- * After a 409 the server's prices win: reload the full gate (with the
- * translation/voice/lip-sync breakdown). If that fails, patch the cell totals
- * from the error details so the live total still reflects the new prices.
- */
-async function reloadAfterPriceChange(
-  jobId: string,
-  costMatrix: { segment_id: number; language: string; total_usd: string }[],
-): Promise<void> {
-  try {
-    await jobStore.getState().getGate(jobId);
-  } catch {
-    const gate = jobStore.getState().gate;
-    if (!gate) return;
-    const totals = new Map(costMatrix.map((c) => [`${c.segment_id}:${c.language}`, c.total_usd]));
-    jobStore.setState({
-      gate: {
-        ...gate,
-        cost_matrix: gate.cost_matrix.map((c) => ({
-          ...c,
-          total_usd: totals.get(`${c.segment_id}:${c.language}`) ?? c.total_usd,
-        })),
-      },
-    });
-  }
-}
-
-function clipLabel(t: Dict, s: GateSegment): string {
+function clipLabel(t: Dict, s: GateClip): string {
   return `${t.clip} ${s.segment_id}: ${s.hook_title}`;
 }
 
