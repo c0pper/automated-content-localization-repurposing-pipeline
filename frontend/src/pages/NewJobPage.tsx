@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useStore } from "zustand";
-import { isApiError } from "@/lib/api";
+import { errorText } from "@/lib/errors";
+import { formatUsd } from "@/lib/money";
 import { CURATED_MODELS, MODEL_TASKS, type ModelTask } from "@/lib/models";
 import { useTranslation } from "@/lib/useTranslation";
 import { jobStore, profileStore } from "@/store";
@@ -93,9 +94,7 @@ export function NewJobPage({ onCreated }: NewJobPageProps) {
       const accepted = await jobStore.getState().submitJob(toPayload(draft, ws.default_models));
       onCreated(accepted.job_id);
     } catch (err) {
-      if (isApiError(err) && err.code === "invalid_model") setError(t.invalidModel);
-      else if (isApiError(err) && err.code === "lip_sync_unavailable") setError(t.lipSyncUnavailable);
-      else setError(err instanceof Error && err.message ? err.message : t.jobSubmitFailed);
+      setError(errorText(t, err));
     }
   };
 
@@ -169,7 +168,7 @@ export function NewJobPage({ onCreated }: NewJobPageProps) {
       <fieldset className="space-y-2">
         <legend>{t.jobBudget}</legend>
         <p>
-          ${ws.job_budget_usd} — {t.jobBudgetFromWorkspace}
+          {formatUsd(ws.job_budget_usd)} — {t.jobBudgetFromWorkspace}
         </p>
       </fieldset>
 

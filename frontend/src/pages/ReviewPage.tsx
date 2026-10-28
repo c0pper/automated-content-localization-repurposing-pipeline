@@ -7,10 +7,11 @@
  */
 import { useEffect, useState } from "react";
 import { VideoPlayer } from "@/components/VideoPlayer";
-import { isApiError } from "@/lib/api";
+import { baseAssetId, isApiError, localizedAssetId } from "@/lib/api";
 import { loadReviewManifest, reviewAssetUrl } from "@/lib/review";
 import { interpolate, useTranslation } from "@/lib/useTranslation";
-import type { ReviewManifest, ReviewSegment } from "@/lib/types";
+import { joinOrEmpty } from "@/lib/format";
+import type { ReviewClip, ReviewManifest } from "@/lib/types";
 import type { Dict } from "@/lib/i18n";
 
 type LoadState =
@@ -73,14 +74,14 @@ export function ReviewPage({ token }: { token: string }) {
           </div>
           <div>
             <dt className="inline text-text-dim">{t.targetLanguages}: </dt>
-            <dd className="inline font-medium">{manifest.target_languages.join(", ") || "—"}</dd>
+            <dd className="inline font-medium">{joinOrEmpty(manifest.target_languages)}</dd>
           </div>
         </dl>
       </header>
 
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {manifest.segments.map((seg) => (
-          <ReviewClip key={seg.segment_id} token={token} clip={seg} sourceLanguage={sourceLanguage} t={t} />
+          <ReviewClipCard key={seg.segment_id} token={token} clip={seg} sourceLanguage={sourceLanguage} t={t} />
         ))}
       </section>
 
@@ -105,9 +106,9 @@ export function ReviewPage({ token }: { token: string }) {
   );
 }
 
-interface ReviewClipProps {
+interface ReviewClipCardProps {
   token: string;
-  clip: ReviewSegment;
+  clip: ReviewClip;
   sourceLanguage: string;
   t: Dict;
 }
@@ -116,7 +117,7 @@ interface ReviewClipProps {
  * The manifest's asset URLs are absolute (`api_base_url`); players use the
  * same review routes through the app's API base so the dev proxy applies.
  */
-function ReviewClip({ token, clip, sourceLanguage, t }: ReviewClipProps) {
+function ReviewClipCard({ token, clip, sourceLanguage, t }: ReviewClipCardProps) {
   const headingId = `review-clip-${clip.segment_id}-heading`;
   const langs = Object.entries(clip.localized_assets ?? {})
     .filter(([, url]) => Boolean(url))
@@ -124,13 +125,13 @@ function ReviewClip({ token, clip, sourceLanguage, t }: ReviewClipProps) {
   return (
     <article aria-labelledby={headingId} className="bg-surface-2 rounded-lg p-3 text-sm space-y-2">
       <h3 id={headingId} className="text-text-dim">
-        {t.segmentId} {clip.segment_id}
+        {t.clip} {clip.segment_id}
       </h3>
       <div className="text-text font-medium">{clip.hook_title}</div>
       <p className="text-text-dim text-xs">{clip.caption}</p>
       {clip.video_asset_url && (
         <VideoPlayer
-          assetUrl={reviewAssetUrl(token, `base_${clip.segment_id}`)}
+          assetUrl={reviewAssetUrl(token, baseAssetId(clip))}
           label={t.baseClip}
           captionLanguage={sourceLanguage}
         />
@@ -140,7 +141,7 @@ function ReviewClip({ token, clip, sourceLanguage, t }: ReviewClipProps) {
         return (
           <div key={lang} className="border-t border-border pt-2 space-y-1 text-xs">
             <VideoPlayer
-              assetUrl={reviewAssetUrl(token, `clip_${clip.segment_id}_${lang}`)}
+              assetUrl={reviewAssetUrl(token, localizedAssetId(clip, lang))}
               label={interpolate(t.localizedClip, { lang })}
               captionLanguage={lang}
             />

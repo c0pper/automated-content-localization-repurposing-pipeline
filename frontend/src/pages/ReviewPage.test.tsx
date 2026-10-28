@@ -62,7 +62,7 @@ describe("ReviewPage", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse(makeManifest()));
     render(<ReviewPage token="tok_abc" />);
 
-    const card = await screen.findByRole("article", { name: "Segment 7" });
+    const card = await screen.findByRole("article", { name: "Clip 7" });
     const [url] = mockFetch.mock.calls[0];
     expect(url).toEqual(expect.stringContaining("/api/review/tok_abc"));
     expect(screen.getByText("FAILED")).toBeTruthy();
@@ -76,7 +76,7 @@ describe("ReviewPage", () => {
     expect(c.getByText("Por qué fallan los anuncios")).toBeTruthy();
 
     // A Clip without rendered assets is still listed, just without players.
-    const partial = screen.getByRole("article", { name: "Segment 8" });
+    const partial = screen.getByRole("article", { name: "Clip 8" });
     expect(partial.querySelector("video")).toBeNull();
     expect(screen.getByText("LinkedIn breakdown text")).toBeTruthy();
   });
@@ -85,7 +85,7 @@ describe("ReviewPage", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse(makeManifest({ status: "COMPLETED" })));
     render(<ReviewPage token="tok_abc" />);
 
-    await screen.findByRole("article", { name: "Segment 7" });
+    await screen.findByRole("article", { name: "Clip 7" });
     expect(screen.queryByRole("button", { name: /rotate|revoke/i })).toBeNull();
   });
 

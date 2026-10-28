@@ -166,4 +166,29 @@ describe("NewJobPage", () => {
       key: "uploads/talk.mp4",
     });
   });
+
+  it("shows the Job Budget as money", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ ...workspace, job_budget_usd: "50.000000" }));
+    render(<NewJobPage onCreated={() => {}} />);
+    expect(await screen.findByText(/^\$50\.00 — set in Workspace Settings/)).toBeTruthy();
+  });
+
+  it.each([
+    ["insufficient_job_budget", "Spend plus the projected cost would exceed this Job's budget."],
+    ["workspace_budget_exceeded", "The monthly Workspace Budget would be exceeded; raise the cap or wait for the next month."],
+    ["brand_new_code", "Something went wrong (error code: brand_new_code)."],
+  ])("maps a %s rejection by code and never shows the backend message", async (code, expected) => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(workspace));
+    mockFetch.mockResolvedValueOnce(jsonResponse({ detail: { code, message: "raw backend text", details: {} } }, 422));
+    render(<NewJobPage onCreated={() => {}} />);
+
+    fireEvent.change(await screen.findByLabelText("Video URL"), {
+      target: { value: "https://example.com/talk.mp4" },
+    });
+    fireEvent.click(screen.getByLabelText("es"));
+    fireEvent.click(screen.getByRole("button", { name: "Create job" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(expected);
+  });
 });

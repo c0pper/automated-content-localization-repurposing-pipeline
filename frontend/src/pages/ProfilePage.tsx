@@ -2,22 +2,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { useTranslation } from "@/lib/useTranslation";
+import { errorCodeText } from "@/lib/errors";
+import { orEmpty } from "@/lib/format";
+import { formatUsd } from "@/lib/money";
 import { profileStore } from "@/store";
 import { ThemeSelector } from "@/components/ThemeSelector";
 
 /** The backend accepts ElevenLabs only (`unsupported_voice_provider` otherwise). */
 const PROVIDERS = ["elevenlabs"];
 
-/** Voice profile error codes mapped to i18n keys; other codes show the backend message. */
-const VOICE_ERROR_KEYS: Record<string, string> = {
-  unsupported_voice_provider: "voiceErrorUnsupportedProvider",
-  invalid_voice_profile: "voiceErrorInvalidProfile",
-  validation_error: "voiceErrorInvalidProfile",
-  voice_profile_missing: "voiceProfileMissing",
-};
-
 function money(value: string | null | undefined): string {
-  return `$${value ?? "0.00"}`;
+  return formatUsd(value ?? "0.00");
 }
 
 export function ProfilePage() {
@@ -82,8 +77,8 @@ export function ProfilePage() {
     }
   };
 
-  const errorKey = errorCode ? VOICE_ERROR_KEYS[errorCode] : undefined;
-  const errorMsg = rawErrorMsg && errorKey && t[errorKey] ? t[errorKey] : rawErrorMsg;
+  // Errors are shown by code only; a failure without a code (network) gets the generic text.
+  const errorMsg = !rawErrorMsg ? null : errorCode ? errorCodeText(t, errorCode, "voice") : t.errorGeneric;
 
   if (loading && !ws) return <div className="p-6">{t.loading}</div>;
   if (errorMsg && !ws) {
@@ -128,7 +123,7 @@ export function ProfilePage() {
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
           <div>
             <dt className="text-text-dim">{t.workspaceId}</dt>
-            <dd><code className="text-text">{ws?.workspace_id ?? "—"}</code></dd>
+            <dd><code className="text-text">{orEmpty(ws?.workspace_id)}</code></dd>
           </div>
           <div>
             <dt className="text-text-dim">{t.sourceLanguageAllowlist}</dt>
@@ -156,7 +151,7 @@ export function ProfilePage() {
           </div>
           <div>
             <dt className="text-text-dim">{t.maxConcurrentJobs}</dt>
-            <dd><strong>{ws?.max_concurrent_jobs ?? "—"}</strong></dd>
+            <dd><strong>{orEmpty(ws?.max_concurrent_jobs)}</strong></dd>
           </div>
           <div>
             <dt className="text-text-dim">{t.defaultModels}</dt>

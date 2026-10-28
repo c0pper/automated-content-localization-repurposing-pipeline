@@ -80,7 +80,8 @@ describe("DashboardPage", () => {
     const c = card("job_a");
     expect(within(c).getByText("Processing")).toBeTruthy();
     expect(within(c).getByText("localization")).toBeTruthy();
-    expect(within(c).getByText("2026-10-27 14:05 UTC")).toBeTruthy();
+    // Locale-aware (UI language en; TZ pinned to UTC in tests).
+    expect(within(c).getByText(/^Oct 27, 2026, 2:05\sPM$/)).toBeTruthy();
     expect(await within(c).findByText("EN")).toBeTruthy();
     expect(within(c).getByText("ES, DE")).toBeTruthy();
   });
