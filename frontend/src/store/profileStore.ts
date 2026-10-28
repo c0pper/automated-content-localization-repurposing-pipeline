@@ -2,7 +2,7 @@
  * Workspace/Profile store for GET /api/workspace and Voice Profile (issue #22).
  */
 import { createStore } from "zustand";
-import { api } from "@/lib/api";
+import { api, isApiError } from "@/lib/api";
 import type { WorkspaceSettings } from "@/lib/types";
 
 /** Fields accepted by `PUT /api/workspace`. */
@@ -19,6 +19,8 @@ export type ProfileStore = {
   workspace: WorkspaceSettings | null;
   loading: boolean;
   error: string | null;
+  /** Backend error code of the last failure (e.g. `unsupported_voice_provider`). */
+  errorCode: string | null;
   /** Translation key for a transient success/placeholder message. */
   notice: string | null;
   loadWorkspace: () => Promise<void>;
@@ -34,37 +36,42 @@ function messageOf(e: unknown): string {
   return e instanceof Error && e.message ? e.message : String(e);
 }
 
+function failure(e: unknown) {
+  return { loading: false, error: messageOf(e), errorCode: isApiError(e) ? e.code : null };
+}
+
 export const createProfileStore = () =>
   createStore<ProfileStore>((set) => ({
     workspace: null,
     loading: false,
     error: null,
+    errorCode: null,
     notice: null,
 
     loadWorkspace: async () => {
-      set({ loading: true, error: null });
+      set({ loading: true, error: null, errorCode: null });
       try {
         const workspace = await api.get<WorkspaceSettings>("/workspace");
         set({ workspace, loading: false });
       } catch (e) {
-        set({ loading: false, error: messageOf(e) });
+        set(failure(e));
         throw e;
       }
     },
 
     updateWorkspace: async (payload) => {
-      set({ loading: true, error: null });
+      set({ loading: true, error: null, errorCode: null });
       try {
         const workspace = await api.put<WorkspaceSettings>("/workspace", payload);
         set({ workspace, loading: false });
       } catch (e) {
-        set({ loading: false, error: messageOf(e) });
+        set(failure(e));
         throw e;
       }
     },
 
     setVoiceProfile: async (provider, voiceId) => {
-      set({ loading: true, error: null, notice: null });
+      set({ loading: true, error: null, errorCode: null, notice: null });
       try {
         const res = await api.put<{
           voice_profile: WorkspaceSettings["voice_profile"];
@@ -78,13 +85,13 @@ export const createProfileStore = () =>
           notice: "voiceProfileUpdated",
         }));
       } catch (e) {
-        set({ loading: false, error: messageOf(e) });
+        set(failure(e));
         throw e;
       }
     },
 
     deleteVoiceProfile: async () => {
-      set({ loading: true, error: null, notice: null });
+      set({ loading: true, error: null, errorCode: null, notice: null });
       try {
         await api.delete("/workspace/voice-profile");
         set((state) => ({
@@ -95,7 +102,7 @@ export const createProfileStore = () =>
           notice: "voiceProfileDeleted",
         }));
       } catch (e) {
-        set({ loading: false, error: messageOf(e) });
+        set(failure(e));
         throw e;
       }
     },
