@@ -1,42 +1,86 @@
 /** Job card for dashboard/jobs list. */
 import { JobSummary } from "@/lib/types";
 import { NavLink } from "@/components/NavLink";
+import { useTranslation } from "@/lib/useTranslation";
+import type { JobLanguages } from "@/lib/useJobLanguages";
 
 export interface JobCardProps {
   job: JobSummary;
+  /**
+   * Source/target languages, resolved separately because GET /api/jobs
+   * summaries do not include them. `undefined` = not requested / loading,
+   * `null` = lookup failed. Both render as a placeholder.
+   */
+  languages?: JobLanguages | null;
 }
 
-export function JobCard({ job }: JobCardProps) {
-  const statusColor: Record<JobSummary["status"], string> = {
-    RECEIVED: "bg-blue-900/20 text-blue-400",
-    PROCESSING: "bg-purple-900/20 text-purple-400 animate-pulse",
-    AWAITING_SELECTION: "bg-orange-900/20 text-orange-400 animate-pulse",
-    COMPLETED: "bg-green-900/20 text-green-400",
-    FAILED: "bg-red-900/20 text-red-400",
-    EXPIRED: "bg-yellow-900/20 text-yellow-400",
-    CANCELLED: "bg-gray-900/20 text-gray-400",
-  };
+const statusColor: Record<JobSummary["status"], string> = {
+  RECEIVED: "bg-blue-900/20 text-blue-400",
+  PROCESSING: "bg-purple-900/20 text-purple-400 animate-pulse",
+  AWAITING_SELECTION: "bg-orange-900/20 text-orange-400 animate-pulse",
+  COMPLETED: "bg-green-900/20 text-green-400",
+  FAILED: "bg-red-900/20 text-red-400",
+  EXPIRED: "bg-yellow-900/20 text-yellow-400",
+  CANCELLED: "bg-gray-900/20 text-gray-400",
+};
+
+/** Human-readable status label, e.g. AWAITING_SELECTION -> "Awaiting selection". */
+function statusLabel(status: JobSummary["status"]): string {
+  const words = status.toLowerCase().replace(/_/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** Locale-independent UTC timestamp, e.g. "2026-10-27 14:05 UTC". */
+export function formatCreatedAt(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
+function formatLanguages(codes: string[]): string {
+  return codes.length ? codes.map((c) => c.toUpperCase()).join(", ") : "—";
+}
+
+export function JobCard({ job, languages }: JobCardProps) {
+  const t = useTranslation();
 
   return (
-    <article className="bg-surface border border-border rounded-xl p-4 hover:border-accent/50 transition cursor-pointer">
+    <article className="bg-surface border border-border rounded-xl p-4 hover:border-accent/50 transition">
       <div className="flex items-start justify-between gap-2 mb-1">
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${statusColor[job.status]}`}>
-          {job.status.charAt(0) + job.status.slice(1).toLowerCase()}
+          {statusLabel(job.status)}
         </span>
         <NavLink to={`/jobs/${job.job_id}`} size="text-sm" underline="hover">
-          Details
+          {t.details}
         </NavLink>
       </div>
-      <div className="text-sm text-text">
-        <div className="text-text-dim">Job ID</div>
-        <code className="text-text">{job.job_id}</code>
-        <div className="mt-1 text-text-dim text-xs">Stage</div>
-        <span className="text-xs">{job.stage ?? "—"}</span>
-      </div>
-      {job.review_url && (
-        <div className="mt-2 text-xs text-accent">
-          Review link available
-        </div>
+      <dl className="text-sm text-text grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        <dt className="text-text-dim">{t.jobId}</dt>
+        <dd>
+          <code className="text-text">{job.job_id}</code>
+        </dd>
+        <dt className="text-text-dim">{t.stage}</dt>
+        <dd>{job.stage ?? "—"}</dd>
+        <dt className="text-text-dim">{t.createdAt}</dt>
+        <dd>
+          <time dateTime={job.created_at ?? undefined}>{formatCreatedAt(job.created_at)}</time>
+        </dd>
+        <dt className="text-text-dim">{t.sourceLanguage}</dt>
+        <dd>{languages?.source ? languages.source.toUpperCase() : "—"}</dd>
+        <dt className="text-text-dim">{t.targetLanguages}</dt>
+        <dd>{languages ? formatLanguages(languages.targets) : "—"}</dd>
+      </dl>
+      {/* Partial/failed Jobs may already hold a review token; the quick link is for finished work only. */}
+      {job.status === "COMPLETED" && job.review_url && (
+        <a
+          className="mt-3 inline-block text-sm text-accent underline hover:opacity-80"
+          href={job.review_url}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {t.openReview}
+        </a>
       )}
     </article>
   );
