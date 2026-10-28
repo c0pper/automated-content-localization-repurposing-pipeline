@@ -139,6 +139,20 @@ describe("SelectionGatePage", () => {
     const headers = within(table).getAllByRole("columnheader").map((h) => h.textContent);
     expect(headers).toContain("Lip sync");
     expect(within(table).getByRole("row", { name: /Hook one.*es/ }).textContent).toContain("$0.75");
+
+    // Selecting the cell charges its lip-sync-inclusive total.
+    fireEvent.click(screen.getByRole("checkbox", { name: "Clip 1: Hook one" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "es" }));
+    expect(screen.getByRole("status", { name: "Selected total" }).textContent).toBe("$1.05");
+  });
+
+  it("has no lip-sync column when the Job was submitted without lip-sync", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(makeGate({ lip_sync: false })));
+    render(<SelectionGatePage jobId="job_42" />);
+
+    const table = await screen.findByRole("table", { name: "Cost matrix" });
+    const headers = within(table).getAllByRole("columnheader").map((h) => h.textContent);
+    expect(headers).not.toContain("Lip sync");
   });
 
   it("selects a rectangle of Clips × Languages and updates the exact total live", async () => {

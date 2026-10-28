@@ -7,6 +7,12 @@ import { jobAssetUrl } from "@/lib/api";
 import type { Clip } from "@/lib/types";
 import type { Dict } from "@/lib/i18n";
 
+/** Job failure codes with a specific explanation (no fallback happens for these). */
+const JOB_ERROR_KEYS: Record<string, string> = {
+  lip_sync_unavailable: "jobErrorLipSync",
+  caption_alignment_unavailable: "jobErrorCaptionAlignment",
+};
+
 export function JobDetailPage({ jobId }: { jobId: string }) {
   const t = useTranslation();
   const selectedJob = useStore(jobStore, (s) => s.selectedJob);
@@ -68,6 +74,7 @@ export function JobDetailPage({ jobId }: { jobId: string }) {
         {job.error && (
           <div role="alert" className="mt-3 text-sm text-red-400">
             <strong>{t.jobError}:</strong> <code>{job.error.code}</code> — {job.error.message}
+            {JOB_ERROR_KEYS[job.error.code] && <p>{t[JOB_ERROR_KEYS[job.error.code]]}</p>}
           </div>
         )}
       </section>
