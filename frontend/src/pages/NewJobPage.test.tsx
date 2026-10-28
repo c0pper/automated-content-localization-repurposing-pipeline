@@ -252,7 +252,26 @@ describe("NewJobPage", () => {
       upload.progress(42, 100);
       const bar = screen.getByRole("progressbar", { name: "Upload progress" });
       expect(bar.getAttribute("value")).toBe("42");
-      expect(screen.getByRole("status").textContent).toBe("Uploading talk.mp4: 42%");
+      expect(screen.getByText("42%")).toBeTruthy();
+    });
+
+    it("announces progress to screen readers in 10% steps from a region that is already mounted", async () => {
+      const upload = stubUpload();
+      mockFetch.mockResolvedValueOnce(jsonResponse(workspace));
+      render(<NewJobPage onCreated={() => {}} uploadSource={upload.fn} />);
+
+      await screen.findByLabelText("Video file");
+      const status = screen.getByRole("status");
+      expect(status.textContent).toBe("");
+
+      pickFile();
+      upload.progress(42, 100);
+      expect(status.textContent).toBe("Uploading talk.mp4: 40%");
+      upload.progress(49, 100);
+      expect(status.textContent).toBe("Uploading talk.mp4: 40%");
+      await upload.finish("uploads/upl_1/source.mp4");
+      expect(screen.getByRole("status")).toBe(status);
+      expect(status.textContent).toBe("talk.mp4 uploaded");
     });
 
     it("Create job waits for the upload, then submits its key as an object source", async () => {
@@ -374,7 +393,8 @@ describe("NewJobPage", () => {
       expect(screen.getByRole("status").textContent).toBe("talk.mp4 uploaded");
 
       fireEvent.click(screen.getByRole("button", { name: "Remove file" }));
-      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.getByRole("status").textContent).toBe("");
+      expect(screen.queryByRole("progressbar")).toBeNull();
     });
 
     it.each([

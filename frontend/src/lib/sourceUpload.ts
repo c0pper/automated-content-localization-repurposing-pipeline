@@ -64,8 +64,21 @@ export function createSourceUploader(uploadApi: UploadApi, uploaderOptions: Uplo
     const controller = new AbortController();
     const stop = () => controller.abort();
     signal?.addEventListener("abort", stop);
-    const inner = controller.signal;
+    try {
+      return await run(file, controller, onProgress);
+    } finally {
+      signal?.removeEventListener("abort", stop);
+    }
+  };
 
+  async function run(
+    file: File,
+    controller: AbortController,
+    onProgress: UploadSourceOptions["onProgress"],
+  ): Promise<{ key: string }> {
+    const inner = controller.signal;
+    // If the Creator cancels during this call, the upload it created is left to
+    // the bucket lifecycle rule (ADR 0022): its id never reaches us.
     const started = await uploadApi.start(
       { filename: file.name, content_type: contentTypeOf(file), size_bytes: file.size },
       inner,
@@ -115,16 +128,15 @@ export function createSourceUploader(uploadApi: UploadApi, uploaderOptions: Uplo
     } catch (err) {
       // Stop the other parts, then discard the upload; the bucket lifecycle rule
       // cleans up if this call is lost too.
+      const cancelled = inner.aborted;
       controller.abort();
       uploadApi.abort(started.upload_id).catch(() => {});
-      throw signal?.aborted ? abortError() : err;
-    } finally {
-      signal?.removeEventListener("abort", stop);
+      throw cancelled ? abortError() : err;
     }
-  };
+  }
 }
 
-/** Storage and network failures are retried; a refusal from the API is final. */
+/** Network failures and 5xx are retried; a refusal from the API or storage is final. */
 function isRetryable(err: unknown): boolean {
   if (err instanceof ApiError) return err.status === 0 || err.status >= 500;
   return true;
@@ -153,6 +165,8 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+const RETRYABLE_PUT_STATUSES = new Set([403, 408, 429]);
+
 /**
  * The real upload API: control calls go through the cookie-authenticated
  * client, parts go straight to the presigned URL. Parts use XHR because fetch
@@ -170,7 +184,10 @@ export const httpUploadApi: UploadApi = {
   putPart: (url, blob, { onProgress, signal }) =>
     new Promise<string>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      const failed = (message: string) => reject(new ApiError(0, "upload_failed", message));
+      // An expired signature (403), timeout or throttling is worth another try:
+      // it is retried as a network failure (status 0) with a fresh URL.
+      const failed = (status: number, message: string) =>
+        reject(new ApiError(RETRYABLE_PUT_STATUSES.has(status) ? 0 : status, "upload_failed", message));
       const onAbort = () => xhr.abort();
       xhr.open("PUT", url);
       xhr.upload.onprogress = (e) => onProgress(e.loaded);
@@ -178,11 +195,12 @@ export const httpUploadApi: UploadApi = {
         signal.removeEventListener("abort", onAbort);
         const etag = xhr.getResponseHeader("ETag");
         if (xhr.status >= 200 && xhr.status < 300 && etag) resolve(etag);
-        else failed(`Part upload failed with HTTP ${xhr.status}`);
+        // A 2xx without a readable ETag means storage CORS does not expose it: retrying won't help.
+        else failed(xhr.status, `Part upload failed with HTTP ${xhr.status}`);
       };
       xhr.onerror = () => {
         signal.removeEventListener("abort", onAbort);
-        failed("Part upload failed");
+        failed(0, "Part upload failed");
       };
       xhr.onabort = () => reject(abortError());
       signal.addEventListener("abort", onAbort, { once: true });

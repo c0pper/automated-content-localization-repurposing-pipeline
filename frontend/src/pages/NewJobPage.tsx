@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useStore } from "zustand";
 import { errorText } from "@/lib/errors";
+import type { Dict } from "@/lib/i18n";
 import { formatUsd } from "@/lib/money";
 import { CURATED_MODELS, MODEL_TASKS, type ModelTask } from "@/lib/models";
 import { uploadSource as defaultUploadSource, type UploadSource } from "@/lib/sourceUpload";
@@ -75,7 +76,15 @@ function modelOptions(task: ModelTask, current: string | undefined): string[] {
   return list;
 }
 
-const ACCEPTED_VIDEO = "video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v";
+/** Screen-reader progress, in 10% steps so the live region isn't read out on every percent. */
+function uploadAnnouncement(t: Dict, upload: SourceUploadState | null): string {
+  if (!upload || upload.status === "failed") return "";
+  const name = upload.file.name;
+  if (upload.status === "done") return interpolate(t.fileUploaded, { name });
+  return interpolate(t.uploadingFile, { name, percent: Math.floor(upload.percent / 10) * 10 });
+}
+
+const ACCEPTED_VIDEO ="video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v";
 
 export function NewJobPage({ onCreated, uploadSource = defaultUploadSource }: NewJobPageProps) {
   const t = useTranslation();
@@ -160,7 +169,7 @@ export function NewJobPage({ onCreated, uploadSource = defaultUploadSource }: Ne
     );
   };
 
-  const resolveSource = async (): Promise<SubmitJobPayload["source"] | null> => {
+  const resolveSourceInput = async (): Promise<SubmitJobPayload["source"] | null> => {
     if (draft.sourceType === "url") return { type: "url", url: draft.url.trim() };
     const current = uploadRef.current;
     if (!upload || !current) {
@@ -180,7 +189,7 @@ export function NewJobPage({ onCreated, uploadSource = defaultUploadSource }: Ne
     e.preventDefault();
     if (upload?.status !== "failed") setError(null);
     try {
-      const source = await resolveSource();
+      const source = await resolveSourceInput();
       if (!source) return;
       setPhase("submitting");
       const accepted = await jobStore.getState().submitJob(toPayload(draft, source, ws.default_models));
@@ -228,7 +237,6 @@ export function NewJobPage({ onCreated, uploadSource = defaultUploadSource }: Ne
             <label htmlFor="job-source">{t.videoUrl}</label>
             <input
               id="job-source"
-              type="url"
               required
               value={draft.url}
               onChange={(e) => update({ url: e.target.value })}
@@ -250,20 +258,20 @@ export function NewJobPage({ onCreated, uploadSource = defaultUploadSource }: Ne
             {upload && (
               <div className="space-y-1">
                 {upload.status !== "failed" && (
-                  <>
-                    <progress aria-label={t.uploadProgress} max={100} value={upload.percent} />
-                    <p role="status">
-                      {upload.status === "done"
-                        ? interpolate(t.fileUploaded, { name: upload.file.name })
-                        : interpolate(t.uploadingFile, { name: upload.file.name, percent: upload.percent })}
-                    </p>
-                  </>
+                  <div>
+                    <progress aria-label={t.uploadProgress} max={100} value={upload.percent} />{" "}
+                    <span aria-hidden="true">{upload.percent}%</span>
+                  </div>
                 )}
                 <button type="button" onClick={removeFile}>
                   {upload.status === "uploading" ? t.cancelUpload : t.removeFile}
                 </button>
               </div>
             )}
+            {/* Mounted before the upload starts so screen readers pick up the first update. */}
+            <p role="status" className="sr-only">
+              {uploadAnnouncement(t, upload)}
+            </p>
           </div>
         )}
       </fieldset>
