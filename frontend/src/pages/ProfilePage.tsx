@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { useTranslation } from "@/lib/useTranslation";
 import { profileStore } from "@/store";
+import { ThemeSelector } from "@/components/ThemeSelector";
 
 const PROVIDERS = ["elevenlabs", "other"];
 
@@ -287,6 +288,8 @@ export function ProfilePage() {
           </div>
         </div>
       </section>
+
+      <ThemeSelector />
     </div>
   );
 }

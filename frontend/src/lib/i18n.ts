@@ -121,6 +121,13 @@ export const en: Dict = {
   apiKeyRotationPlaceholder: "Placeholder rotation triggered — regenerate the workspace token externally.",
   apiKeyClearPlaceholderMessage: "Placeholder clear triggered — the key was not changed.",
   jobBudgetOverview: "Job budget overview",
+  // Theme (#23)
+  accentColor: "Accent color",
+  accentColorHint: "Applies instantly across the portal and is remembered on this device.",
+  accentCyan: "Cyan",
+  accentGreen: "Electric green",
+  accentMagenta: "Magenta",
+  accentAmber: "Amber",
 };
 
 const esOverrides: Dict = {
@@ -211,6 +218,13 @@ const esOverrides: Dict = {
   apiKeyClearPlaceholderMessage: "Borrado de marcador activado — la clave no se ha modificado.",
   jobBudgetOverview: "Resumen del presupuesto por trabajo",
   voiceProfileMissing: "Falta el perfil de voz — la localización fallará.",
+  // Theme (#23)
+  accentColor: "Color de acento",
+  accentColorHint: "Se aplica al instante en todo el portal y se recuerda en este dispositivo.",
+  accentCyan: "Cian",
+  accentGreen: "Verde eléctrico",
+  accentMagenta: "Magenta",
+  accentAmber: "Ámbar",
 };
 
 const deOverrides: Dict = {
@@ -301,6 +315,13 @@ const deOverrides: Dict = {
   apiKeyClearPlaceholderMessage: "Platzhalter-Löschung ausgelöst — der Schlüssel wurde nicht geändert.",
   jobBudgetOverview: "Übersicht Auftragsbudget",
   voiceProfileMissing: "Stimmprofil fehlt — Lokalisierung schlägt fehl.",
+  // Theme (#23)
+  accentColor: "Akzentfarbe",
+  accentColorHint: "Wird sofort im gesamten Portal angewendet und auf diesem Gerät gespeichert.",
+  accentCyan: "Cyan",
+  accentGreen: "Elektrisches Grün",
+  accentMagenta: "Magenta",
+  accentAmber: "Bernstein",
 };
 
 export const es: Dict = { ...en, ...esOverrides };
