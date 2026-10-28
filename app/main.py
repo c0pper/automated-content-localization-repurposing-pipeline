@@ -12,18 +12,18 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-from app.adapters.local_object_store import LocalObjectStore
+from app.adapters.local_object_store import LocalObjectStore, PartTooLargeError
 from app.api.middleware import IdempotencyMiddleware
 from app.security.auth import AuthMiddleware
 from app.api.router import api_router, root_router
 from app.config import Settings
 from app.container import Container, build_container
-from app.domain.errors import ApiError, UnknownJobError
+from app.domain.errors import ApiError, ExternalServiceError, UnknownJobError
 from app.logging_config import configure_logging
 
 logger = logging.getLogger(__name__)
@@ -149,7 +149,8 @@ def create_app(
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["Location"],
+        # Browsers read each part's ETag to complete a multipart upload.
+        expose_headers=["Location", "ETag"],
     )
     app.add_middleware(IdempotencyMiddleware)
     app.add_middleware(AuthMiddleware)
@@ -158,6 +159,12 @@ def create_app(
     assets_dir.mkdir(parents=True, exist_ok=True)
     if isinstance(container.store, LocalObjectStore):
 
+        def _asset_error(status_code: int, code: str, message: str) -> JSONResponse:
+            return JSONResponse(
+                status_code=status_code,
+                content={"detail": {"code": code, "message": message, "details": {}}},
+            )
+
         @app.get("/assets/{key:path}", include_in_schema=False)
         async def local_asset(
             key: str,
@@ -165,31 +172,46 @@ def create_app(
             signature: str = Query(...),
         ):
             if not container.store.verify_presigned(
-                key, expires=expires, signature=signature
+                "GET", key, expires=expires, signature=signature
             ):
-                return JSONResponse(
-                    status_code=403,
-                    content={
-                        "detail": {
-                            "code": "forbidden",
-                            "message": "The asset link is invalid or expired",
-                            "details": {},
-                        }
-                    },
-                )
+                return _asset_error(403, "forbidden", "The asset link is invalid or expired")
             path = container.store.local_path(key)
             if not path.is_file():
-                return JSONResponse(
-                    status_code=404,
-                    content={
-                        "detail": {
-                            "code": "not_found",
-                            "message": "Unknown asset",
-                            "details": {},
-                        }
-                    },
-                )
+                return _asset_error(404, "not_found", "Unknown asset")
             return FileResponse(path)
+
+        @app.put("/assets/{key:path}", include_in_schema=False)
+        async def local_upload_part(
+            key: str,
+            request: Request,
+            expires: int = Query(...),
+            signature: str = Query(...),
+            upload_id: str = Query(""),
+            part_number: int = Query(0),
+        ):
+            """Accept one signed multipart part, as Silo does for a presigned ``PUT``."""
+            if not container.store.verify_presigned(
+                "PUT",
+                key,
+                expires=expires,
+                signature=signature,
+                upload_id=upload_id,
+                part_number=part_number,
+            ):
+                return _asset_error(403, "forbidden", "The upload link is invalid or expired")
+            try:
+                etag = await container.store.write_part(
+                    key,
+                    upload_id,
+                    part_number,
+                    request.stream(),
+                    max_bytes=container.settings.max_source_bytes,
+                )
+            except PartTooLargeError:
+                return _asset_error(413, "too_large", "The part exceeds the maximum source size")
+            except ExternalServiceError:
+                return _asset_error(404, "not_found", "Unknown upload")
+            return Response(status_code=200, headers={"ETag": etag})
 
     app.include_router(root_router)
     app.include_router(api_router)
