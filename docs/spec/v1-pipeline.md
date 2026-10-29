@@ -555,12 +555,13 @@ completed cells and only re-runs missing cells.
   pre-mux renders are pruned after seven days. Expired and cancelled Jobs keep their Base
   Clips, source text and masters under the same rule.
 - Completed Source Uploads never attached to a Job are deleted by the retention sweep after
-  the Retention Window; attached ones expire with their Source Recording.
+  the Retention Window; attached ones expire with their Source Recording. Aborted records,
+  and uploads left unfinished past the window, are removed on the same schedule.
 - The retention sweeper is idempotent. A Workspace Purge removes delivered assets
   immediately; backups age out under the separate 30-day backup policy.
 - A Workspace Purge is two-step:
   1. A dry-run reports Jobs, Base/Localized assets including masters, copy files, review
-     tokens, cost entries, events and bytes, and returns a short-lived, single-use
+     tokens, cost entries, events, Source Uploads and bytes, and returns a short-lived, single-use
      confirmation token bound to the Workspace.
   2. Confirmation carries the Workspace ID and token. The Workspace is locked against new
      submissions, active Jobs must be cancelled first, and the purge deletes all Jobs,
@@ -952,15 +953,16 @@ profile fails at localization. `DELETE` requires an idempotency key.
 
 - `POST /api/workspace/purge/dry-run` → `200`:
   `{"jobs": 12, "base_clips": 48, "localized_clips": 20, "copy_files": 24,
-  "review_tokens": 12, "cost_entries": 300, "events": 500, "bytes": 123456789,
+  "review_tokens": 12, "cost_entries": 300, "events": 500, "source_uploads": 3,
+  "bytes": 123456789,
   "confirmation_token": "...", "expires_at": "..."}`.
 - `POST /api/workspace/purge` with `{"workspace_id": "ws_...", "confirmation_token": "..."}`
   → `202` with `{"purge_id": "purge_...", "status": "RUNNING"}`. `409 active_jobs` if any
   Job is not terminal; `410 purge_confirmation_expired` for a stale token; `409
   workspace_id_mismatch` for the wrong Workspace.
 - `GET /api/workspace/purge/{purge_id}` → status and counts. The purge locks new
-  submissions, deletes all Job data, assets, review tokens, cost entries, events and
-  idempotency records, and leaves Workspace Settings, the API key and the Voice Profile.
+  submissions, deletes all Job data, assets, review tokens, cost entries, events,
+  idempotency records and Source Uploads (records and `uploads/` objects), and leaves Workspace Settings, the API key and the Voice Profile.
   Review links return `404` afterward. Backups remain for their 30-day policy.
 
 #### Inbound webhooks

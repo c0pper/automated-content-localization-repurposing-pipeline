@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import subprocess
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 from app.container import build_container
 from app.main import create_app
 from tests.helpers import (
+    MutableClock,
     auth_headers,
     idem_headers,
     make_client,
@@ -286,3 +288,113 @@ def test_sqlite_source_uploads_survive_a_restart(tmp_path):
     assert by_id.provider_upload_id
     assert by_id.completed_at is not None
     assert by_id.job_id == job_id
+
+
+def _completed_upload(client, *, key: str) -> dict:
+    upload = _initiate(client, key=f"init-{key}", size_bytes=1024).json()
+    completed = _complete(
+        client, upload["upload_id"], _upload_parts(client, upload, b"x" * 1024), key=key
+    )
+    assert completed.status_code == 200, completed.text
+    return upload
+
+
+_BACKENDS = pytest.mark.parametrize("repository_backend", ["memory", "sqlite"])
+
+
+@_BACKENDS
+def test_unattached_upload_is_swept_after_the_retention_window(tmp_path, repository_backend):
+    clock = MutableClock(datetime.now(UTC))
+    settings = make_settings(tmp_path, repository_backend=repository_backend)
+    container = build_container(settings, clock=clock)
+    with TestClient(create_app(container=container)) as client:
+        old = _completed_upload(client, key="old")
+        clock.advance(days=5)
+        young = _completed_upload(client, key="young")
+
+    clock.advance(days=2, minutes=1)
+    asyncio.run(container.retention.sweep())
+
+    assert asyncio.run(container.source_uploads.get(old["upload_id"])) is None
+    assert asyncio.run(container.store.head(old["key"])) is None
+    assert asyncio.run(container.source_uploads.get(young["upload_id"])) is not None
+    assert asyncio.run(container.store.head(young["key"])) is not None
+
+
+@_BACKENDS
+def test_attached_upload_expires_with_its_jobs_source_recording(tmp_path, repository_backend):
+    clock = MutableClock(datetime.now(UTC))
+    settings = make_settings(tmp_path, repository_backend=repository_backend)
+    container = build_container(settings, clock=clock)
+    with TestClient(create_app(container=container)) as client:
+        upload = _completed_upload(client, key="attached")
+        job_id = _submit_object(client, upload["key"], idempotency_key="s-1").json()["job_id"]
+
+        clock.advance(days=8)
+        asyncio.run(container.retention.sweep())
+        assert asyncio.run(container.source_uploads.get(upload["upload_id"])) is not None
+        assert asyncio.run(container.store.head(upload["key"])) is not None
+
+        cancelled = client.post(f"/api/jobs/{job_id}/cancel", headers=idem_headers("cancel"))
+        assert cancelled.status_code == 202, cancelled.text
+
+    asyncio.run(container.retention.sweep())
+
+    assert asyncio.run(container.store.head(upload["key"])) is None
+    assert asyncio.run(container.source_uploads.get(upload["upload_id"])) is None
+
+
+@_BACKENDS
+def test_aborted_and_abandoned_uploads_are_swept_idempotently(tmp_path, repository_backend):
+    settings = make_settings(tmp_path, repository_backend=repository_backend)
+    clock = MutableClock(datetime.now(UTC))
+    container = build_container(settings, clock=clock)
+    with TestClient(create_app(container=container)) as client:
+        aborted = _initiate(client, key="u-1", size_bytes=1024).json()
+        client.delete(f"/api/uploads/{aborted['upload_id']}", headers=idem_headers("abort"))
+        abandoned = _initiate(client, key="u-2", size_bytes=1024).json()
+        _upload_parts(client, abandoned, b"x" * 1024)
+        done = _completed_upload(client, key="done")
+
+    clock.advance(days=7, minutes=1)
+    first = asyncio.run(container.retention.sweep())
+    second = asyncio.run(container.retention.sweep())
+
+    for upload in (aborted, abandoned, done):
+        assert asyncio.run(container.source_uploads.get(upload["upload_id"])) is None
+    assert _staged_uploads(settings) == []
+    assert first == 3
+    assert second == 0
+
+
+@_BACKENDS
+def test_workspace_purge_counts_and_removes_source_uploads(tmp_path, repository_backend):
+    settings = make_settings(tmp_path, repository_backend=repository_backend)
+    container = build_container(settings)
+    with TestClient(create_app(container=container)) as client:
+        attached = _completed_upload(client, key="attached")
+        job_id = _submit_object(client, attached["key"], idempotency_key="s-1").json()["job_id"]
+        client.post(f"/api/jobs/{job_id}/cancel", headers=idem_headers("cancel"))
+        unattached = _completed_upload(client, key="unattached")
+        in_progress = _initiate(client, key="u-3", size_bytes=1024).json()
+
+        preview = client.post(
+            "/api/workspace/purge/dry-run", headers=idem_headers("purge-dry")
+        ).json()
+        assert preview["source_uploads"] == 3
+        assert preview["bytes"] >= 2048
+
+        confirmed = client.post(
+            "/api/workspace/purge",
+            json={
+                "workspace_id": "ws_default",
+                "confirmation_token": preview["confirmation_token"],
+            },
+            headers=idem_headers("purge-confirm"),
+        )
+        assert confirmed.status_code == 202, confirmed.text
+
+    for upload in (attached, unattached, in_progress):
+        assert asyncio.run(container.source_uploads.get(upload["upload_id"])) is None
+        assert asyncio.run(container.store.head(upload["key"])) is None
+    assert _staged_uploads(settings) == []

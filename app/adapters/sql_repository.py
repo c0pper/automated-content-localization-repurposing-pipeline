@@ -1051,6 +1051,26 @@ class SQLSourceUploads:
             )
             await session.commit()
 
+    async def list_created_before(self, cutoff: datetime) -> list[SourceUpload]:
+        return await self._many(source_uploads.c.created_at < _utc(cutoff))
+
+    async def list_for_workspace(self, workspace_id: str) -> list[SourceUpload]:
+        return await self._many(source_uploads.c.workspace_id == workspace_id)
+
+    async def delete(self, upload_id: str) -> None:
+        async with self._db.session() as session:
+            await session.execute(
+                delete(source_uploads).where(source_uploads.c.upload_id == upload_id)
+            )
+            await session.commit()
+
+    async def delete_all(self, workspace_id: str) -> None:
+        async with self._db.session() as session:
+            await session.execute(
+                delete(source_uploads).where(source_uploads.c.workspace_id == workspace_id)
+            )
+            await session.commit()
+
     async def claim(self, key: str, job_id: str) -> bool:
         async with self._db.session() as session:
             result = await session.execute(
@@ -1070,12 +1090,19 @@ class SQLSourceUploads:
     async def _one(self, condition) -> SourceUpload | None:
         async with self._db.session() as session:
             row = (await session.execute(select(source_uploads).where(condition))).first()
-        if row is None:
-            return None
-        data = dict(row._mapping)
-        data["created_at"] = _utc(data["created_at"])
-        data["completed_at"] = _utc(data["completed_at"])
-        return SourceUpload.model_validate(data)
+        return _upload_from_row(row) if row is not None else None
+
+    async def _many(self, condition) -> builtins.list[SourceUpload]:
+        async with self._db.session() as session:
+            rows = (await session.execute(select(source_uploads).where(condition))).all()
+        return [_upload_from_row(row) for row in rows]
+
+
+def _upload_from_row(row) -> SourceUpload:
+    data = dict(row._mapping)
+    data["created_at"] = _utc(data["created_at"])
+    data["completed_at"] = _utc(data["completed_at"])
+    return SourceUpload.model_validate(data)
 
 
 def _upload_row(upload: SourceUpload) -> dict[str, Any]:
