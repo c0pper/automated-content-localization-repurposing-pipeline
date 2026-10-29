@@ -105,6 +105,9 @@ class FFmpegMediaProcessor:
                 "veryfast",
                 "-crf",
                 "20",
+                # 8-bit 4:2:0: 10-bit (High10) H.264 does not play in Firefox or Safari.
+                "-pix_fmt",
+                "yuv420p",
                 "-c:a",
                 "aac",
                 "-movflags",
@@ -133,6 +136,9 @@ class FFmpegMediaProcessor:
                 "veryfast",
                 "-crf",
                 "20",
+                # 8-bit 4:2:0: 10-bit (High10) H.264 does not play in Firefox or Safari.
+                "-pix_fmt",
+                "yuv420p",
                 "-c:a",
                 "copy",
                 "-movflags",

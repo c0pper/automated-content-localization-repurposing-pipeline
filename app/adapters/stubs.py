@@ -98,19 +98,19 @@ class StubMediaProcessor:
         end_seconds: float,
         captions: str | None = None,
     ) -> Path:
-        await _placeholder(source, destination)
+        await _stub_clip(destination)
         if captions:
             destination.with_suffix(".srt").write_text(captions, encoding="utf-8")
         return destination
 
     async def burn_captions(self, video: Path, captions: str, destination: Path) -> Path:
         self.burns.append({"video": video, "captions": captions})
-        await _placeholder(video, destination)
+        await _stub_clip(destination)
         destination.with_suffix(".srt").write_text(captions, encoding="utf-8")
         return destination
 
     async def replace_audio(self, video: Path, audio: Path, destination: Path) -> Path:
-        return await _placeholder(video, destination)
+        return await _stub_clip(destination)
 
 
 class StubTranscriber:
@@ -119,13 +119,15 @@ class StubTranscriber:
         self._word_duration = word_duration
 
     async def transcribe(self, audio: Path, *, language_hint: str | None = None) -> Transcript:
+        # Real ffmpeg audio sets the length, so stub Clips fall inside the recording.
+        duration = _wav_duration(audio) or self._duration_seconds
         tokens = _SCRIPT.split()
         words: list[TranscriptWord] = []
         timestamp = 0.0
         index = 0
 
-        while timestamp < self._duration_seconds:
-            end = min(timestamp + self._word_duration * 0.9, self._duration_seconds)
+        while timestamp < duration:
+            end = min(timestamp + self._word_duration * 0.9, duration)
             words.append(
                 TranscriptWord(
                     text=tokens[index % len(tokens)],
@@ -139,7 +141,7 @@ class StubTranscriber:
         return Transcript(
             language=language_hint or "en",
             language_confidence=1.0 if language_hint else 0.99,
-            duration_seconds=self._duration_seconds,
+            duration_seconds=duration,
             words=words,
         )
 
@@ -314,6 +316,25 @@ def _alignment(text: str, duration: float) -> list[TranscriptWord]:
         )
         for index, token in enumerate(tokens)
     ]
+
+
+# A 1 s black 9:16 H.264/AAC MP4, so stub Clips play in the review UI.
+_STUB_CLIP = Path(__file__).with_name("stub_clip.mp4")
+
+
+async def _stub_clip(destination: Path) -> Path:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(shutil.copyfile, _STUB_CLIP, destination)
+    return destination
+
+
+def _wav_duration(audio: Path) -> float | None:
+    """Length of a PCM WAV in seconds, or None for placeholder audio."""
+    try:
+        with wave.open(str(audio), "rb") as handle:
+            return handle.getnframes() / handle.getframerate()
+    except (OSError, EOFError, wave.Error):
+        return None
 
 
 async def _placeholder(source: Path, destination: Path) -> Path:

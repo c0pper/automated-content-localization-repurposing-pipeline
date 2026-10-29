@@ -252,6 +252,18 @@ async def test_presigned_get_cannot_be_used_to_put(backend, tmp_path):
     assert backend.http.get(url).content == b"original"
 
 
+async def test_presigned_get_serves_a_clip_as_video_mp4(backend, tmp_path):
+    """Firefox refuses a <video> source served as binary/octet-stream."""
+    key = _upload_key()
+    source = tmp_path / "clip.mp4"
+    source.write_bytes(b"clip")
+    await backend.store.put(source, key)
+
+    response = backend.http.get(await backend.store.presign(key, ttl_seconds=_TTL))
+
+    assert response.headers["content-type"] == "video/mp4"
+
+
 async def test_part_url_is_bound_to_its_method_part_and_key(backend):
     key = _upload_key()
     upload_id = await backend.store.initiate_multipart(key, content_type="video/mp4")
