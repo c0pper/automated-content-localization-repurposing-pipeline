@@ -119,12 +119,12 @@ class Container:
     dispose: Callable[[], Awaitable[None]] | None = None
 
 
-def build_container(settings: Settings | None = None) -> Container:
+def build_container(settings: Settings | None = None, *, clock: Clock | None = None) -> Container:
     settings = settings or Settings()
     settings.validate_for_runtime()
     settings.ensure_directories()
 
-    clock: Clock = SystemClock()
+    clock = clock or SystemClock()
 
     repository: JobRepository
     ledger: CostLedgerRepository
@@ -352,6 +352,7 @@ def build_container(settings: Settings | None = None) -> Container:
         review_tokens=review_tokens,
         purges=purges,
         leases=leases,
+        uploads=source_uploads,
         store=store,
         clock=clock,
         settings=settings,
@@ -424,6 +425,7 @@ def build_container(settings: Settings | None = None) -> Container:
             store,
             retention_days=settings.retention_days,
             repository=repository,
+            uploads=source_uploads,
             clock=clock,
             workspace_root=settings.workspace_dir,
         ),

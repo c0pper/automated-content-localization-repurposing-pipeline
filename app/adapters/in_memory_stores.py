@@ -295,6 +295,30 @@ class InMemorySourceUploads:
     async def save(self, upload: SourceUpload) -> None:
         self._uploads[upload.upload_id] = upload.model_copy(deep=True)
 
+    async def list_created_before(self, cutoff: datetime) -> list[SourceUpload]:
+        return [
+            upload.model_copy(deep=True)
+            for upload in self._uploads.values()
+            if upload.created_at < cutoff
+        ]
+
+    async def list_for_workspace(self, workspace_id: str) -> list[SourceUpload]:
+        return [
+            upload.model_copy(deep=True)
+            for upload in self._uploads.values()
+            if upload.workspace_id == workspace_id
+        ]
+
+    async def delete(self, upload_id: str) -> None:
+        self._uploads.pop(upload_id, None)
+
+    async def delete_all(self, workspace_id: str) -> None:
+        self._uploads = {
+            upload_id: upload
+            for upload_id, upload in self._uploads.items()
+            if upload.workspace_id != workspace_id
+        }
+
     async def claim(self, key: str, job_id: str) -> bool:
         for upload in self._uploads.values():
             if (

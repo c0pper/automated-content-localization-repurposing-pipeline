@@ -11,7 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.config import Settings
-from app.domain.enums import JobStatus, PurgeStatus
+from app.domain.enums import JobStatus, PurgeStatus, SourceUploadStatus
 from app.domain.errors import ApiError
 from app.domain.models import Purge
 from app.ports import (
@@ -25,6 +25,7 @@ from app.ports import (
     OutboxRepository,
     PurgeRepository,
     ReviewTokenRepository,
+    SourceUploadRepository,
 )
 
 
@@ -44,6 +45,7 @@ class PurgeService:
         review_tokens: ReviewTokenRepository,
         purges: PurgeRepository,
         leases: LeaseStore,
+        uploads: SourceUploadRepository,
         store: ObjectStore,
         clock: Clock,
         settings: Settings,
@@ -56,6 +58,7 @@ class PurgeService:
         self._review_tokens = review_tokens
         self._purges = purges
         self._leases = leases
+        self._uploads = uploads
         self._store = store
         self._clock = clock
         self._settings = settings
@@ -87,6 +90,9 @@ class PurgeService:
             events += len(await self._events.list_for_job(job.job_id))
             for key in await self._store.list_keys(f"jobs/{job.job_id}/"):
                 total_bytes += await self._store.size(key)
+        uploads = await self._uploads.list_for_workspace(self._settings.workspace_id)
+        for key in await self._store.list_keys("uploads/"):
+            total_bytes += await self._store.size(key)
 
         raw_token = secrets.token_urlsafe(32)
         purge = Purge(
@@ -101,6 +107,7 @@ class PurgeService:
                 "review_tokens": review_tokens,
                 "cost_entries": cost_entries,
                 "events": events,
+                "source_uploads": len(uploads),
                 "bytes": total_bytes,
             },
             confirmation_token_hash=_hash(raw_token),
@@ -158,7 +165,11 @@ class PurgeService:
             for job in jobs:
                 await self._store.delete_prefix(f"jobs/{job.job_id}/")
                 await self._remove_workspace(job.job_id)
+            for upload in await self._uploads.list_for_workspace(self._settings.workspace_id):
+                if upload.status is SourceUploadStatus.UPLOADING:
+                    await self._store.abort_multipart(upload.key, upload.provider_upload_id)
             await self._store.delete_prefix("uploads/")
+            await self._uploads.delete_all(self._settings.workspace_id)
             await self._jobs.delete_all(self._settings.workspace_id)
             await self._ledger.delete_all(self._settings.workspace_id)
             await self._events.delete_all(self._settings.workspace_id)
