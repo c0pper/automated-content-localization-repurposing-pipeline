@@ -1,0 +1,6 @@
+# Files consumed inside Linux containers must keep LF endings on every checkout,
+# including Git for Windows with core.autocrlf=true (#48).
+*.sh        text eol=lf
+*.sql       text eol=lf
+Caddyfile   text eol=lf
+Dockerfile  text eol=lf
