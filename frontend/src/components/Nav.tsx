@@ -1,20 +1,23 @@
-import { useState } from "react";
-import { authStore } from "@/store";
+import { useStore } from "zustand";
+import { authStore, localizationStore } from "@/store";
 import { useTranslation } from "@/lib/useTranslation";
+import { UI_LANGUAGES, type Locale } from "@/lib/i18n";
 
 export interface NavProps {
   path: string;
   onNavigate: (to: string) => void;
 }
 
+/** Each UI language named in itself, so a Creator can find theirs from any UI language. */
+const LANGUAGE_NAMES: Record<Locale, string> = {
+  en: "English",
+  es: "Español",
+  de: "Deutsch",
+};
+
 export function Nav({ path, onNavigate }: NavProps) {
   const t = useTranslation();
-  const [locale, setLocale] = useState<"en" | "es" | "de">("en");
-  const locales = [
-    { code: "en" as const, label: "EN" },
-    { code: "es" as const, label: "ES" },
-    { code: "de" as const, label: "DE" },
-  ];
+  const uiLanguage = useStore(localizationStore, (s) => s.uiLanguage);
 
   const linkCls = (to: string) =>
     `px-3 py-2 rounded-lg transition ${
@@ -64,14 +67,18 @@ export function Nav({ path, onNavigate }: NavProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="flex gap-1">
-          {locales.map((l) => (
+        <div className="flex gap-1" role="group" aria-label={t.language}>
+          {UI_LANGUAGES.map((code) => (
             <button
-              key={l.code}
-              onClick={() => setLocale(l.code)}
-              className={`text-xs px-2 py-1 rounded ${locale === l.code ? "bg-accent/15 text-accent" : "text-text-dim"}`}
+              key={code}
+              type="button"
+              lang={code}
+              aria-label={LANGUAGE_NAMES[code]}
+              aria-pressed={uiLanguage === code}
+              onClick={() => localizationStore.getState().setUILanguage(code)}
+              className={`text-xs px-2 py-1 rounded ${uiLanguage === code ? "bg-accent/15 text-accent" : "text-text-dim"}`}
             >
-              {l.label}
+              {code.toUpperCase()}
             </button>
           ))}
         </div>

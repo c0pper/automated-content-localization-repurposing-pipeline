@@ -4,6 +4,7 @@ import { useStore } from "zustand";
 import { jobStore } from "@/store";
 import { JobCard } from "@/components/JobCard";
 import { useJobLanguages } from "@/lib/useJobLanguages";
+import { formatNumber } from "@/lib/format";
 import { interpolate, useTranslation } from "@/lib/useTranslation";
 
 export function DashboardPage() {
@@ -38,7 +39,7 @@ export function DashboardPage() {
       <header className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-accent">{t.dashboard}</h2>
         <span className="text-sm text-text-dim">
-          {interpolate(t.dashboardJobCount, { count: jobs.length })}
+          {interpolate(t.dashboardJobCount, { count: formatNumber(jobs.length, t.locale) })}
         </span>
       </header>
 

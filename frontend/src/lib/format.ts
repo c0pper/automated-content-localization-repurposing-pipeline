@@ -1,6 +1,6 @@
 /**
  * Display formatting shared by every page: the placeholder for a missing
- * value and locale-aware dates (US15). Money goes through `formatUsd` in
+ * value and locale-aware dates and counts (US15). Money goes through `formatUsd` in
  * `lib/money.ts`.
  */
 
@@ -33,6 +33,11 @@ export function orEmpty(value: string | number | null | undefined): string {
 /** A list joined with ", ", or `EMPTY_VALUE` when it is empty. */
 export function joinOrEmpty(values: readonly (string | number)[]): string {
   return values.length ? values.join(", ") : EMPTY_VALUE;
+}
+
+/** A count in `locale`, e.g. 12345 -> "12.345" in German. */
+export function formatNumber(n: number, locale: string): string {
+  return new Intl.NumberFormat(locale).format(n);
 }
 
 const DURATION_UNITS = [

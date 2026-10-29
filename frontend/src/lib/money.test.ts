@@ -20,7 +20,15 @@ describe("USD decimal-string arithmetic", () => {
   });
 
   it("formats an amount for display with a dollar sign", () => {
-    expect(formatUsd("1.250000")).toBe("$1.25");
-    expect(formatUsd("0.123456")).toBe("$0.123456");
+    expect(formatUsd("1.250000", "en")).toBe("$1.25");
+    expect(formatUsd("0.123456", "en")).toBe("$0.123456");
+  });
+
+  it("formats an amount for the UI locale without losing micro-USD digits", () => {
+    // Intl separates the amount from the symbol with a no-break space.
+    expect(formatUsd("1234.5", "de").replace(/\s/g, " ")).toBe("1.234,50 $");
+    expect(formatUsd("1234.5", "es").replace(/\s/g, " ")).toBe("1234,50 US$");
+    expect(formatUsd("9007199254740993.000001", "en")).toBe("$9,007,199,254,740,993.000001");
+    expect(formatUsd("0.123456", "de").replace(/\s/g, " ")).toBe("0,123456 $");
   });
 });

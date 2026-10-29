@@ -201,7 +201,7 @@ describe("SelectionGatePage", () => {
 
     const status = await screen.findByText(/Selection confirmed/);
     expect(status.getAttribute("role")).toBe("status");
-    expect(status.textContent).toContain("PROCESSING");
+    expect(status.textContent).toContain("Job status: Processing");
     expect(status.textContent).toContain("localization");
 
     const posts = selectionPosts(mockFetch);

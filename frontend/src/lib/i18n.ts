@@ -716,3 +716,8 @@ const deOverrides: Dict = {
 
 export const es: Dict = { ...en, ...esOverrides };
 export const de: Dict = { ...en, ...deOverrides };
+
+/** Every UI language and its string table; adding a language starts here. */
+export const DICTS: Record<Locale, Dict> = { en, es, de };
+
+export const UI_LANGUAGES = Object.keys(DICTS) as Locale[];

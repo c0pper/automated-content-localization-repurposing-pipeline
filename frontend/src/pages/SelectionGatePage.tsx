@@ -11,7 +11,7 @@ import { useStore } from "zustand";
 import { jobStore } from "@/store";
 import { isSelectionPriceChanged } from "@/lib/api";
 import { errorText } from "@/lib/errors";
-import { formatDateTime, orEmpty } from "@/lib/format";
+import { formatDateTime, orEmpty, statusLabel } from "@/lib/format";
 import { formatUsd } from "@/lib/money";
 import { isValidSelection, selectionTotal, type GateSelection } from "@/lib/selection";
 import { interpolate, useTranslation } from "@/lib/useTranslation";
@@ -73,7 +73,7 @@ export function SelectionGatePage({ jobId }: { jobId: string }) {
         <h2 className="text-2xl font-bold text-accent">{t.gateTitle}</h2>
         <p role="status" className="bg-surface rounded-xl border border-border p-4">
           {interpolate(t.selectionConfirmed, {
-            status: confirmed.status,
+            status: statusLabel(t, confirmed.status),
             stage: orEmpty(confirmed.stage),
           })}
         </p>
@@ -156,7 +156,7 @@ export function SelectionGatePage({ jobId }: { jobId: string }) {
       <section aria-labelledby="gate-total" className="bg-surface rounded-xl border border-border p-4 space-y-2">
         <h3 id="gate-total" className="font-semibold text-sm">{t.selectedTotal}</h3>
         <output aria-labelledby="gate-total" aria-live="polite" className="block text-lg font-semibold text-accent">
-          {formatUsd(total)}
+          {formatUsd(total, t.locale)}
         </output>
         <p className="text-text-dim text-sm" aria-live="polite">
           {!valid
@@ -167,7 +167,7 @@ export function SelectionGatePage({ jobId }: { jobId: string }) {
         </p>
         {priceChangedTotal != null && (
           <p role="alert" className="text-orange-400 text-sm">
-            {interpolate(t.priceChanged, { total: formatUsd(priceChangedTotal) })}
+            {interpolate(t.priceChanged, { total: formatUsd(priceChangedTotal, t.locale) })}
           </p>
         )}
         {submitError && (
@@ -184,7 +184,7 @@ export function SelectionGatePage({ jobId }: { jobId: string }) {
             ? t.confirming
             : cellCount === 0
               ? t.confirmNoLocalization
-              : interpolate(t.confirmSelection, { total: formatUsd(total) })}
+              : interpolate(t.confirmSelection, { total: formatUsd(total, t.locale) })}
         </button>
       </section>
     </div>
@@ -292,10 +292,10 @@ function CostMatrix({ gate, selection, t }: { gate: GatePayload; selection: Gate
                 >
                   <th scope="row" className={th}>{label}</th>
                   <td className={td} lang={c.language}>{c.language}</td>
-                  <td className={td}>{formatUsd(c.translation_usd)}</td>
-                  <td className={td}>{formatUsd(c.voice_usd)}</td>
-                  {gate.lip_sync && <td className={td}>{formatUsd(c.lip_sync_usd)}</td>}
-                  <td className={`${td} font-medium`}>{formatUsd(c.total_usd)}</td>
+                  <td className={td}>{formatUsd(c.translation_usd, t.locale)}</td>
+                  <td className={td}>{formatUsd(c.voice_usd, t.locale)}</td>
+                  {gate.lip_sync && <td className={td}>{formatUsd(c.lip_sync_usd, t.locale)}</td>}
+                  <td className={`${td} font-medium`}>{formatUsd(c.total_usd, t.locale)}</td>
                   <td className={td}>{isSelected ? t.selected : t.notSelected}</td>
                 </tr>
               );
@@ -304,7 +304,7 @@ function CostMatrix({ gate, selection, t }: { gate: GatePayload; selection: Gate
         </table>
       </div>
       <p className="text-text-dim text-xs">
-        {interpolate(t.projectedAllCells, { total: formatUsd(gate.projected_total_usd) })}
+        {interpolate(t.projectedAllCells, { total: formatUsd(gate.projected_total_usd, t.locale) })}
       </p>
     </section>
   );

@@ -6,15 +6,18 @@
  */
 import { createAuthStore } from "./authStore";
 import { createJobStore } from "./jobStore";
+import { createLocalizationStore } from "./localizationStore";
 import { createProfileStore } from "./profileStore";
 import { createThemeStore } from "./themeStore";
 
 export const authStore = createAuthStore();
 export const jobStore = createJobStore();
+export const localizationStore = createLocalizationStore();
 export const profileStore = createProfileStore();
 export const themeStore = createThemeStore();
 
 export type { AuthState } from "./authStore";
 export type { JobStore } from "./jobStore";
+export type { LocalizationStore } from "./localizationStore";
 export type { ProfileStore } from "./profileStore";
 export type { Theme, ThemeStore } from "./themeStore";
