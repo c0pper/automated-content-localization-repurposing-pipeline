@@ -11,8 +11,8 @@ import { ThemeSelector } from "@/components/ThemeSelector";
 /** The backend accepts ElevenLabs only (`unsupported_voice_provider` otherwise). */
 const PROVIDERS = ["elevenlabs"];
 
-function money(value: string | null | undefined): string {
-  return formatUsd(value ?? "0.00");
+function money(value: string | null | undefined, locale: string): string {
+  return formatUsd(value ?? "0.00", locale);
 }
 
 export function ProfilePage() {
@@ -135,19 +135,19 @@ export function ProfilePage() {
           </div>
           <div>
             <dt className="text-text-dim">{t.jobBudget}</dt>
-            <dd><strong className="text-accent">{money(ws?.job_budget_usd)}</strong></dd>
+            <dd><strong className="text-accent">{money(ws?.job_budget_usd, t.locale)}</strong></dd>
           </div>
           <div>
             <dt className="text-text-dim">{t.monthlyBudget}</dt>
-            <dd><strong>{money(ws?.monthly_budget_usd)}</strong></dd>
+            <dd><strong>{money(ws?.monthly_budget_usd, t.locale)}</strong></dd>
           </div>
           <div>
             <dt className="text-text-dim">{t.monthlySpend}</dt>
-            <dd className="text-text">{money(ws?.current_month_spend_usd)}</dd>
+            <dd className="text-text">{money(ws?.current_month_spend_usd, t.locale)}</dd>
           </div>
           <div>
             <dt className="text-text-dim">{t.workspaceRemaining}</dt>
-            <dd><strong className="text-green-400">{money(ws?.remaining_usd)}</strong></dd>
+            <dd><strong className="text-green-400">{money(ws?.remaining_usd, t.locale)}</strong></dd>
           </div>
           <div>
             <dt className="text-text-dim">{t.maxConcurrentJobs}</dt>
@@ -290,15 +290,15 @@ export function ProfilePage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
           <div className="bg-surface-2 p-4 rounded-lg text-center">
             <div className="text-text-dim">{t.jobBudget}</div>
-            <div className="text-xl font-bold text-text">{money(ws?.job_budget_usd)}</div>
+            <div className="text-xl font-bold text-text">{money(ws?.job_budget_usd, t.locale)}</div>
           </div>
           <div className="bg-surface-2 p-4 rounded-lg text-center">
             <div className="text-text-dim">{t.monthlySpend}</div>
-            <div className="text-xl font-bold text-accent">{money(ws?.current_month_spend_usd)}</div>
+            <div className="text-xl font-bold text-accent">{money(ws?.current_month_spend_usd, t.locale)}</div>
           </div>
           <div className="bg-surface-2 p-4 rounded-lg text-center">
             <div className="text-text-dim">{t.workspaceRemaining}</div>
-            <div className="text-xl font-bold text-green-400">{money(ws?.remaining_usd)}</div>
+            <div className="text-xl font-bold text-green-400">{money(ws?.remaining_usd, t.locale)}</div>
           </div>
         </div>
       </section>

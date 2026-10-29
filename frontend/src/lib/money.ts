@@ -29,7 +29,22 @@ export function sumUsd(amounts: Iterable<string>): string {
   return fromMicros(total);
 }
 
-/** Display form of a wire USD string, e.g. "1.250000" -> "$1.25". */
-export function formatUsd(amount: string): string {
-  return `$${fromMicros(toMicros(amount))}`;
+/**
+ * Display form of a wire USD string in the UI `locale`, e.g. "1.250000" ->
+ * "$1.25" (en) or "1,25 $" (de). Intl lays out the symbol and separators
+ * around the bigint whole part; the fraction digits are spliced in verbatim,
+ * so no amount passes through a float.
+ */
+export function formatUsd(amount: string, locale: string): string {
+  const [whole, frac] = fromMicros(toMicros(amount)).split(".");
+  const digits = frac.length;
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })
+    .formatToParts(BigInt(whole))
+    .map((p) => (p.type === "fraction" ? frac : p.value))
+    .join("");
 }

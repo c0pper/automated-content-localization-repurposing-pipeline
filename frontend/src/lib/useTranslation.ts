@@ -1,15 +1,17 @@
-import { en, es, de, type Dict, type Locale } from "./i18n";
-
-const dicts: Record<Locale, Dict> = { en, es, de };
+import { useStore } from "zustand";
+import { localizationStore } from "@/store";
+import { DICTS, type Dict } from "./i18n";
 
 /**
- * Resolve the string table for the active UI language.
+ * Resolve the string table for the Creator's UI language (Localization
+ * domain), re-rendering the caller when it changes.
  *
  * Returns the dictionary object (e.g. `t.loading`) with English fallback for
  * keys missing from a translated locale.
  */
-export function useTranslation(locale: Locale = "en"): Dict {
-  return dicts[locale] ?? dicts.en;
+export function useTranslation(): Dict {
+  const locale = useStore(localizationStore, (s) => s.uiLanguage);
+  return DICTS[locale] ?? DICTS.en;
 }
 
 /** Replace `{{var}}` placeholders in a translated string. */

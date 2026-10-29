@@ -93,20 +93,20 @@ export function JobDetailPage({ jobId }: { jobId: string }) {
           <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
             <div>
               <dt className="text-text-dim">{t.jobBudget}</dt>
-              <dd className="font-medium">{formatUsd(job.cost.job_budget_usd)}</dd>
+              <dd className="font-medium">{formatUsd(job.cost.job_budget_usd, t.locale)}</dd>
             </div>
             <div>
               <dt className="text-text-dim">{t.spent}</dt>
-              <dd className="font-medium">{formatUsd(job.cost.spent_usd)}</dd>
+              <dd className="font-medium">{formatUsd(job.cost.spent_usd, t.locale)}</dd>
             </div>
             <div>
               <dt className="text-text-dim">{t.workspaceRemaining}</dt>
-              <dd className="font-medium">{formatUsd(job.cost.workspace_remaining_usd)}</dd>
+              <dd className="font-medium">{formatUsd(job.cost.workspace_remaining_usd, t.locale)}</dd>
             </div>
             {job.cost.projected_localization_usd != null && (
               <div>
                 <dt className="text-text-dim">{t.projectedLocalization}</dt>
-                <dd className="font-medium">{formatUsd(job.cost.projected_localization_usd)}</dd>
+                <dd className="font-medium">{formatUsd(job.cost.projected_localization_usd, t.locale)}</dd>
               </div>
             )}
           </dl>
@@ -128,7 +128,7 @@ export function JobDetailPage({ jobId }: { jobId: string }) {
             </div>
             <div>
               <dt className="text-text-dim">{t.confirmedTotal}</dt>
-              <dd>{formatUsd(job.selection.expected_total_usd)}</dd>
+              <dd>{formatUsd(job.selection.expected_total_usd, t.locale)}</dd>
             </div>
             <div>
               <dt className="text-text-dim">{t.confirmedAt}</dt>

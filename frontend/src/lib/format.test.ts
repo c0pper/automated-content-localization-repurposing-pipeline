@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { EMPTY_VALUE, formatDateTime, joinOrEmpty, orEmpty, statusLabel } from "@/lib/format";
+import { EMPTY_VALUE, formatDateTime, formatNumber, joinOrEmpty, orEmpty, statusLabel } from "@/lib/format";
 import { de, en, es } from "@/lib/i18n";
 
 describe("display formatting", () => {
@@ -8,6 +8,11 @@ describe("display formatting", () => {
     expect(formatDateTime(iso, en.locale, "UTC")).toMatch(/^Oct 27, 2026, 2:05\sPM$/);
     expect(formatDateTime(iso, de.locale, "UTC")).toBe("27.10.2026, 14:05");
     expect(formatDateTime(iso, es.locale, "UTC")).toMatch(/^27 oct 2026, 14:05$/);
+  });
+
+  it("formats counts for the UI language", () => {
+    expect(formatNumber(12345, en.locale)).toBe("12,345");
+    expect(formatNumber(12345, de.locale)).toBe("12.345");
   });
 
   it("shows the empty placeholder for missing or invalid values", () => {

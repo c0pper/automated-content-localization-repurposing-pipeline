@@ -344,7 +344,7 @@ export function NewJobPage({
       <fieldset className="space-y-2">
         <legend>{t.jobBudget}</legend>
         <p>
-          {formatUsd(ws.job_budget_usd)} — {t.jobBudgetFromWorkspace}
+          {formatUsd(ws.job_budget_usd, t.locale)} — {t.jobBudgetFromWorkspace}
         </p>
       </fieldset>
 
