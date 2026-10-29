@@ -94,8 +94,19 @@ class PurgeRequest(BaseModel):
     confirmation_token: str
 
 
-class PresignedUploadRequest(BaseModel):
-    key: str
+class UploadRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(min_length=1, max_length=128)
+    size_bytes: int = Field(gt=0)
+
+
+class UploadedPartPayload(BaseModel):
+    part_number: int = Field(ge=1)
+    etag: str = Field(min_length=1, max_length=128)
+
+
+class UploadCompleteRequest(BaseModel):
+    parts: list[UploadedPartPayload] = Field(min_length=1)
 
 
 class ErrorDetail(BaseModel):

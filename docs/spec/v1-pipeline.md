@@ -28,7 +28,7 @@ Operators need a backend that:
 Build a single-tenant, API-only FastAPI service that turns one Source Recording into a
 Review Bundle through a resumable, cost-guarded pipeline.
 
-The pipeline ingests a remote URL or a pre-uploaded Silo object key, transcribes the audio,
+The pipeline ingests a remote URL or a Source Upload (ADR 0022), transcribes the audio,
 detects or accepts the Source Language, plans 3–5 Clip Candidates, scores them with Jev and
 the Quality Floor, renders Base Clips, and pauses at the Selection Gate. The Creator selects
 a rectangular subset of Base Clips × declared Target Languages, sees the projected
@@ -46,8 +46,8 @@ at-most-once webhooks. A single-host Docker Compose stack is the v1 deployment.
    separate frontend can submit and manage Jobs without exposing provider credentials.
 2. As an Operator, I want a per-Job review token that is read-only, so that a Creator can
    view a Job without receiving the Workspace API key.
-3. As a Creator, I want to submit either a remote video URL or a pre-uploaded Silo object
-   key, so that I can use the storage flow that fits my workflow.
+3. As a Creator, I want to submit either a remote video URL or a file I upload directly,
+   so that I can use the storage flow that fits my workflow.
 4. As a Creator, I want to declare the Source Language when I already know it, so that a
    wrong automatic detection does not misclassify my recording.
 5. As a Creator, I want the pipeline to detect the Source Language when I do not declare it,
@@ -281,7 +281,8 @@ A Job is submitted with:
 ```
 
 - `source` is a discriminated union: `url` or `object`. `object` carries a Silo key under
-  the Workspace's `uploads/` prefix. Multipart uploads through the API are not supported.
+  the Workspace's `uploads/` prefix, normally the key returned by a completed Source Upload.
+  Submitting an `object` key marks the Source Upload as attached to the Job.
 - `source_language` is optional. A declared value wins over detection and is recorded as
   `declared`. Without it, the effective language is `detected` or, only when detection is
   inconclusive, `fallback` English.
@@ -304,6 +305,30 @@ limits. Remote fetches are SSRF-protected: HTTP(S) only, DNS re-resolution and p
 loopback / link-local / metadata address rejection, no unsafe redirects, bounded redirects,
 timeouts and a size cap. Object keys are validated for prefix, traversal and existence.
 Source Recordings and extracted audio live only for the Retention Window.
+
+Source Uploads (ADR 0022) send bytes straight from the client to the object store as a
+presigned S3 multipart upload; the API never streams them, and uploading always finishes
+before the Job is submitted.
+
+1. `POST /api/uploads` declares `filename`, `content_type` and `size_bytes`. The API
+   rejects an unsupported extension/content type or a size above `max_source_bytes` before
+   signing anything, generates the key `uploads/{upload_id}/source.{ext}`, starts the
+   multipart upload and returns the `upload_id`, `key` and `part_size_bytes` (32 MiB).
+   The client-supplied filename is display metadata only.
+2. `GET /api/uploads/{upload_id}/parts?numbers=1,2,3` returns presigned part URLs on
+   demand, so a long upload never outlives the presign TTL. Clients PUT parts with bounded
+   concurrency (4) and retry failed parts.
+3. `POST /api/uploads/{upload_id}/complete` carries each part number and `ETag`. The API
+   completes the multipart upload, checks that the assembled object's size equals the
+   declared size and stays within `max_source_bytes`, and deletes the object on mismatch.
+4. `DELETE /api/uploads/{upload_id}` aborts an in-progress upload and frees its parts.
+
+A presigned URL authorizes exactly one HTTP method on one key (and part). Silo gets this from
+SigV4; the local object store signs method, key, part number and expiry in its HMAC and
+serves signed part PUTs itself, so the same client code works against both backends. Silo
+CORS allows `PUT` from the configured frontend origins and exposes `ETag`. A bucket lifecycle
+rule aborts incomplete multipart uploads after 24 hours. Upload sessions are not resumable
+across page reloads in v1.
 
 The same submission shape is accepted by the inbound webhook endpoint. Webhooks authenticate
 with the Workspace webhook secret and are idempotent on the provider event ID. Provider-native
@@ -528,6 +553,8 @@ completed cells and only re-runs missing cells.
   lifetime. The Source Recording, full Transcript, caption SRTs, intermediate audio and
   pre-mux renders are pruned after seven days. Expired and cancelled Jobs keep their Base
   Clips, source text and masters under the same rule.
+- Completed Source Uploads never attached to a Job are deleted by the retention sweep after
+  the Retention Window; attached ones expire with their Source Recording.
 - The retention sweeper is idempotent. A Workspace Purge removes delivered assets
   immediately; backups age out under the separate 30-day backup policy.
 - A Workspace Purge is two-step:
@@ -576,6 +603,10 @@ an opaque `cursor`; responses carry `next_cursor` or `null`.
 | Method | Path | Auth | Idempotency | Purpose |
 | --- | --- | --- | --- | --- |
 | POST | `/api/jobs` | API key | required | Submit a Job |
+| POST | `/api/uploads` | API key | required | Start a Source Upload |
+| GET | `/api/uploads/{upload_id}/parts` | API key | — | Presigned part URLs |
+| POST | `/api/uploads/{upload_id}/complete` | API key | required | Complete a Source Upload |
+| DELETE | `/api/uploads/{upload_id}` | API key | required | Abort a Source Upload |
 | GET | `/api/jobs` | API key | — | List Jobs |
 | GET | `/api/jobs/{job_id}` | API key | — | Job status and clip view |
 | GET | `/api/jobs/{job_id}/bundle` | API key | — | Review Bundle manifest |
@@ -628,9 +659,46 @@ Response:
 ```
 
 The response also carries `Location: /api/jobs/{job_id}`. `source_language` may be omitted.
-`source` may be `{"type": "object", "key": "uploads/raw.mp4"}`. The API returns `422` for
+`source` may be `{"type": "object", "key": "uploads/upl_0123456789ab/source.mp4"}`. The API returns `422` for
 invalid shapes, unsupported languages/models, source/target conflicts and unsafe sources;
 `409` for idempotency conflicts; `401` for a missing/invalid key.
+
+#### Source Uploads
+
+`POST /api/uploads` → `201 Created`
+
+```json
+{"filename": "keynote.mp4", "content_type": "video/mp4", "size_bytes": 734003200}
+```
+
+```json
+{
+  "upload_id": "upl_0123456789ab",
+  "key": "uploads/upl_0123456789ab/source.mp4",
+  "part_size_bytes": 33554432,
+  "part_count": 22,
+  "status": "UPLOADING"
+}
+```
+
+`422` with `unsupported_media_format` or `source_too_large`.
+
+`GET /api/uploads/{upload_id}/parts?numbers=1,2` → `200 OK`
+`{"parts": [{"part_number": 1, "url": "https://..."}], "expires_at": "..."}`. `409`
+`upload_not_in_progress` once completed or aborted.
+
+`POST /api/uploads/{upload_id}/complete` → `200 OK`
+
+```json
+{"parts": [{"part_number": 1, "etag": "\"9b2c...\""}]}
+```
+
+Returns `{"upload_id", "key", "size_bytes", "status": "COMPLETED"}`. `422`
+`upload_size_mismatch` (object deleted) or `upload_parts_invalid`; `409`
+`upload_not_in_progress`.
+
+`DELETE /api/uploads/{upload_id}` → `204 No Content`; aborting an already aborted upload is
+a no-op, a completed one returns `409 upload_not_in_progress`.
 
 #### Read a Job
 
@@ -861,6 +929,7 @@ whatever assets exist for a partial Job and reports the Job's status.
   "job_budget_usd": "50.00",
   "monthly_budget_usd": "500.00",
   "max_concurrent_jobs": 2,
+  "max_video_minutes": 90.0,
   "current_month_spend_usd": "12.34",
   "remaining_usd": "487.66",
   "voice_profile": {"provider": "elevenlabs", "voice_id": "...", "updated_at": "..."}
@@ -868,7 +937,8 @@ whatever assets exist for a partial Job and reports the Job's status.
 ```
 
 `PUT /api/workspace` replaces the mutable settings document (same fields except
-`workspace_id`, `current_month_spend_usd`, `remaining_usd` and `voice_profile`). It validates
+`workspace_id`, `max_video_minutes`, `current_month_spend_usd`, `remaining_usd` and
+`voice_profile`). `max_video_minutes` is the deployment's input length limit, read-only here. It validates
 the allowlist against the configured providers, budgets against positive bounds and
 concurrency against the worker capacity. Changes are audited. `PUT` is safe/idempotent and
 does not require an idempotency key.
@@ -927,11 +997,15 @@ Postgres schema, expressed as tables and constraints rather than file paths:
   attempts, last_error, created_at, sent_at.
 - `idempotency_keys` — workspace_id + key unique, method, path, request hash, response
   status, response body JSONB, created_at, expires_at.
+- `source_uploads` — upload_id PK, workspace_id, key unique, provider multipart upload id,
+  original filename, content type, declared size, actual size, status
+  (`UPLOADING`/`COMPLETED`/`ABORTED`), job_id FK nullable (set on submission),
+  created_at, completed_at.
 - `review_tokens` — id PK, job_id FK, token_hash unique, created_at, rotated_at, revoked_at.
 - `purges` — purge_id PK, workspace_id, status, counts JSONB, created_at, completed_at,
   error.
 
-Enums: `job_status`, `job_stage`, `source_language_origin`, `derived_mode`,
+Enums: `job_status`, `job_stage`, `source_upload_status`, `source_language_origin`, `derived_mode`,
 `notification_status`, `purge_status`. Job Event `type` is a documented string set so it can
 grow without a migration.
 
@@ -947,7 +1021,8 @@ Runtime settings are environment-driven and validated at startup:
 - Workspace API key; webhook secret; notification webhook URL; public base URL; CORS allowed
   origins.
 - Postgres URL; Redis URL; Silo endpoint, bucket, region, access key, secret key; presign
-  TTL (default 900 seconds).
+  TTL (default 900 seconds); max source bytes (default 2 GB); upload part size (default
+  32 MiB); frontend origins allowed for Silo upload CORS.
 - Provider credentials: Whisper/OpenAI, OpenRouter, ElevenLabs, Sync Labs.
 - Target allowlist (default `en, es, de, pt-BR, fr, it`), max Target Languages (default 3),
   source language support, and curated model allowlists per task.
@@ -1008,7 +1083,14 @@ Use the domain glossary vocabulary in test names.
   deleted by a purge.
 - **Security tests** — missing/invalid API key, review token revocation, asset path traversal,
   SSRF URL rejection, object-key prefix rejection, no secrets in events/manifests, presigned
-  URL TTL.
+  URL TTL, a presigned GET cannot be used to PUT (and vice versa), server-generated upload
+  keys ignore client-supplied paths.
+- **Source Upload tests** — initiate rejects oversize and unsupported files before signing;
+  complete rejects and deletes a size mismatch; abort frees the upload; a completed upload
+  submits as an `object` Job and is marked attached; an unattached upload is swept after the
+  Retention Window while an attached one follows its Job. The multipart methods of the
+  object-store port run in the adapter contract suite against both Silo and the local
+  store.
 - **Deployment tests** — Compose starts with all services healthy; Caddy serves TLS; a
   synthetic Job runs through the API; a review link resolves; a purge removes assets; a
   backup dump restores into a clean database/Silo (restore drill). These are acceptance

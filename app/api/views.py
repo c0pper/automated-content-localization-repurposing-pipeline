@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.domain.enums import JobStatus
-from app.domain.models import CostLedgerEntry, Job, JobEvent
+from app.domain.models import CostLedgerEntry, Job, JobEvent, SourceUpload
 from app.domain.money import format_usd
 from app.services.cost import CostService
 from app.services.review import ReviewService
@@ -159,6 +159,7 @@ def workspace_view(snapshot: dict) -> dict:
         "job_budget_usd": format_usd(snapshot["job_budget_micro_usd"]),
         "monthly_budget_usd": format_usd(snapshot["monthly_budget_micro_usd"]),
         "max_concurrent_jobs": snapshot["max_concurrent_jobs"],
+        "max_video_minutes": snapshot["max_video_minutes"],
         "current_month_spend_usd": format_usd(
             snapshot["current_month_spend_micro_usd"]
         ),
@@ -172,4 +173,13 @@ def workspace_view(snapshot: dict) -> dict:
             if voice
             else None
         ),
+    }
+
+
+def upload_view(upload: SourceUpload) -> dict:
+    return {
+        "upload_id": upload.upload_id,
+        "key": upload.key,
+        "size_bytes": upload.actual_size_bytes,
+        "status": upload.status.value,
     }

@@ -73,7 +73,11 @@ and `Idempotency-Key`; errors use `{"detail": {"code", "message", "details"}}`.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/jobs` | Submit a remote URL or pre-uploaded object key |
+| `POST` | `/api/jobs` | Submit a remote URL or a completed Source Upload's key |
+| `POST` | `/api/uploads` | Start a Source Upload (direct multipart to object storage) |
+| `GET` | `/api/uploads/{upload_id}/parts` | Presigned part URLs |
+| `POST` | `/api/uploads/{upload_id}/complete` | Complete a Source Upload |
+| `DELETE` | `/api/uploads/{upload_id}` | Abort a Source Upload |
 | `GET` | `/api/jobs` | List Jobs (`status`, `limit`, `cursor`) |
 | `GET` | `/api/jobs/{job_id}` | Job view, cost summary, review URL |
 | `GET` | `/api/jobs/{job_id}/selection` | Selection Gate + cost matrix |
@@ -130,7 +134,7 @@ transitions.
 
 The SQL adapter mirrors the aggregate into `jobs`, `clips` and `clip_localizations` while
 keeping a complete payload for checkpoint resume. The Postgres schema is
-[`migrations/001_initial.sql`](migrations/001_initial.sql); `app.migrate` is idempotent.
+[`migrations/`](migrations/) (`001_initial.sql`, `002_source_uploads.sql`); `app.migrate` is idempotent.
 
 > AI provider adapters are still deterministic stubs in this build: a production stack is
 > durable for persistence, queueing, storage and notifications, but it does not make paid

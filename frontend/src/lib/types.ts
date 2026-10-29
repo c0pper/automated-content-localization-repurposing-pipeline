@@ -168,6 +168,8 @@ export interface WorkspaceSettings {
   job_budget_usd: string;
   monthly_budget_usd: string;
   max_concurrent_jobs: number;
+  /** Deployment input length limit; read-only. */
+  max_video_minutes: number;
   current_month_spend_usd: string;
   remaining_usd: string;
   voice_profile: {

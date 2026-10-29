@@ -100,6 +100,7 @@ class Settings(BaseSettings):
     max_video_minutes: float = 90.0
     max_characters_per_job: int = 60_000
     max_source_bytes: int = 2_000_000_000
+    upload_part_size_bytes: int = 32 * 1024 * 1024
 
     retention_days: int = 7
     retention_sweep_seconds: int = 86_400

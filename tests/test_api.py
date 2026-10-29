@@ -414,6 +414,7 @@ def test_workspace_settings_and_voice_profile(tmp_path):
         assert workspace["workspace_id"] == "ws_default"
         assert workspace["job_budget_usd"] == "50.00"
         assert workspace["voice_profile"] is None
+        assert workspace["max_video_minutes"] == 90.0
 
         updated = client.put(
             "/api/workspace",

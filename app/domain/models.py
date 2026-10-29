@@ -24,6 +24,7 @@ from app.domain.enums import (
     NotificationType,
     PurgeStatus,
     SourceLanguageOrigin,
+    SourceUploadStatus,
 )
 
 
@@ -339,6 +340,23 @@ class WorkspaceAuditEntry(BaseModel):
     action: str
     payload: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utc_now)
+
+
+class SourceUpload(BaseModel):
+    """A file uploaded straight to object storage before any Job exists (ADR 0022)."""
+
+    upload_id: str
+    workspace_id: str = "ws_default"
+    key: str
+    provider_upload_id: str
+    filename: str
+    content_type: str
+    declared_size_bytes: int = Field(gt=0)
+    actual_size_bytes: int | None = Field(default=None, ge=0)
+    status: SourceUploadStatus = SourceUploadStatus.UPLOADING
+    job_id: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+    completed_at: datetime | None = None
 
 
 class Purge(BaseModel):

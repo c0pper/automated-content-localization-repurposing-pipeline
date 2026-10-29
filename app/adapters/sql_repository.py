@@ -46,7 +46,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from app.config import Settings
-from app.domain.enums import JobStatus
+from app.domain.enums import JobStatus, SourceUploadStatus
 from app.domain.models import (
     CostLedgerEntry,
     IdempotencyRecord,
@@ -55,6 +55,7 @@ from app.domain.models import (
     NotificationOutboxEntry,
     Purge,
     ReviewToken,
+    SourceUpload,
     VoiceProfile,
     WorkspaceAuditEntry,
     WorkspaceSettings,
@@ -240,6 +241,23 @@ purges = Table(
     Column("workspace_id", String(64), nullable=False, index=True),
     Column("payload", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+source_uploads = Table(
+    "source_uploads",
+    metadata,
+    Column("upload_id", String(64), primary_key=True),
+    Column("workspace_id", String(64), nullable=False, index=True),
+    Column("key", String(256), nullable=False, unique=True),
+    Column("provider_upload_id", String(1024), nullable=False),
+    Column("filename", String(255), nullable=False),
+    Column("content_type", String(128), nullable=False),
+    Column("declared_size_bytes", BigInteger, nullable=False),
+    Column("actual_size_bytes", BigInteger, nullable=True),
+    Column("status", String(16), nullable=False),
+    Column("job_id", String(64), nullable=True, index=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("completed_at", DateTime(timezone=True), nullable=True),
 )
 
 leases = Table(
@@ -1009,6 +1027,65 @@ class SQLPurgeRepository:
             await session.commit()
 
 
+class SQLSourceUploads:
+    def __init__(self, db: SQLDatabase) -> None:
+        self._db = db
+
+    async def add(self, upload: SourceUpload) -> None:
+        async with self._db.session() as session:
+            await session.execute(source_uploads.insert().values(**_upload_row(upload)))
+            await session.commit()
+
+    async def get(self, upload_id: str) -> SourceUpload | None:
+        return await self._one(source_uploads.c.upload_id == upload_id)
+
+    async def get_by_key(self, key: str) -> SourceUpload | None:
+        return await self._one(source_uploads.c.key == key)
+
+    async def save(self, upload: SourceUpload) -> None:
+        async with self._db.session() as session:
+            await session.execute(
+                update(source_uploads)
+                .where(source_uploads.c.upload_id == upload.upload_id)
+                .values(**_upload_row(upload))
+            )
+            await session.commit()
+
+    async def claim(self, key: str, job_id: str) -> bool:
+        async with self._db.session() as session:
+            result = await session.execute(
+                update(source_uploads)
+                .where(
+                    and_(
+                        source_uploads.c.key == key,
+                        source_uploads.c.status == SourceUploadStatus.COMPLETED.value,
+                        source_uploads.c.job_id.is_(None),
+                    )
+                )
+                .values(job_id=job_id)
+            )
+            await session.commit()
+        return result.rowcount == 1
+
+    async def _one(self, condition) -> SourceUpload | None:
+        async with self._db.session() as session:
+            row = (await session.execute(select(source_uploads).where(condition))).first()
+        if row is None:
+            return None
+        data = dict(row._mapping)
+        data["created_at"] = _utc(data["created_at"])
+        data["completed_at"] = _utc(data["completed_at"])
+        return SourceUpload.model_validate(data)
+
+
+def _upload_row(upload: SourceUpload) -> dict[str, Any]:
+    row = upload.model_dump()
+    row["status"] = upload.status.value
+    row["created_at"] = _utc(upload.created_at)
+    row["completed_at"] = _utc(upload.completed_at)
+    return row
+
+
 class SQLLeaseStore:
     def __init__(self, db: SQLDatabase, clock) -> None:
         self._db = db
@@ -1120,5 +1197,6 @@ def build_sql_repositories(settings: Settings, clock):
         SQLReviewTokens(db),
         SQLWorkspaceRepository(db),
         SQLPurgeRepository(db),
+        SQLSourceUploads(db),
         SQLLeaseStore(db, clock),
     )

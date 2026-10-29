@@ -20,9 +20,12 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import Settings
 from app.domain.errors import ExternalServiceError
+from app.ports.infra import ObjectHead, UploadedPart
 
 _CHUNK_SIZE = 1024 * 1024
 _WORKSPACE_PREFIX = "workspace/"
+# Completion errors caused by the request itself; retrying the same parts cannot succeed.
+_REJECTED_COMPLETION_CODES = {"InvalidPart", "InvalidPartOrder", "EntityTooSmall", "NoSuchUpload"}
 
 
 class SiloObjectStore:
@@ -203,6 +206,101 @@ class SiloObjectStore:
             )
         except (BotoCoreError, ClientError) as exc:
             raise ExternalServiceError(f"Could not presign {key}: {exc}") from exc
+
+    async def head(self, key: str) -> ObjectHead | None:
+        def _head() -> ObjectHead | None:
+            try:
+                response = self._client.head_object(Bucket=self._bucket, Key=key)
+            except ClientError as exc:
+                if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey"}:
+                    return None
+                raise
+            return ObjectHead(
+                size=int(response.get("ContentLength", 0)),
+                content_type=response.get("ContentType"),
+            )
+
+        try:
+            return await asyncio.to_thread(_head)
+        except (BotoCoreError, ClientError) as exc:
+            raise ExternalServiceError(f"Could not stat {key}: {exc}") from exc
+
+    async def initiate_multipart(self, key: str, *, content_type: str) -> str:
+        try:
+            response = await asyncio.to_thread(
+                self._client.create_multipart_upload,
+                Bucket=self._bucket,
+                Key=key,
+                ContentType=content_type,
+            )
+        except (BotoCoreError, ClientError) as exc:
+            raise ExternalServiceError(f"Could not start an upload to {key}: {exc}") from exc
+        return response["UploadId"]
+
+    async def presign_part(
+        self,
+        key: str,
+        upload_id: str,
+        part_number: int,
+        *,
+        ttl_seconds: int | None = None,
+    ) -> str:
+        ttl = ttl_seconds or self._presign_ttl
+        try:
+            return await asyncio.to_thread(
+                self._public_client.generate_presigned_url,
+                "upload_part",
+                Params={
+                    "Bucket": self._bucket,
+                    "Key": key,
+                    "UploadId": upload_id,
+                    "PartNumber": part_number,
+                },
+                ExpiresIn=max(1, ttl),
+            )
+        except (BotoCoreError, ClientError) as exc:
+            raise ExternalServiceError(
+                f"Could not presign part {part_number} of {key}: {exc}"
+            ) from exc
+
+    async def complete_multipart(
+        self, key: str, upload_id: str, parts: list[UploadedPart]
+    ) -> None:
+        try:
+            await asyncio.to_thread(
+                self._client.complete_multipart_upload,
+                Bucket=self._bucket,
+                Key=key,
+                UploadId=upload_id,
+                MultipartUpload={
+                    "Parts": [
+                        {"PartNumber": part.part_number, "ETag": part.etag} for part in parts
+                    ]
+                },
+            )
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            raise ExternalServiceError(
+                f"Could not complete the upload to {key}: {exc}",
+                retryable=code not in _REJECTED_COMPLETION_CODES,
+            ) from exc
+        except BotoCoreError as exc:
+            raise ExternalServiceError(f"Could not complete the upload to {key}: {exc}") from exc
+
+    async def abort_multipart(self, key: str, upload_id: str) -> None:
+        try:
+            await asyncio.to_thread(
+                self._client.abort_multipart_upload,
+                Bucket=self._bucket,
+                Key=key,
+                UploadId=upload_id,
+            )
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") == "NoSuchUpload":
+                return  # Already completed or aborted: aborting is idempotent.
+            raise ExternalServiceError(f"Could not abort the upload to {key}: {exc}") from exc
+        except BotoCoreError as exc:
+            raise ExternalServiceError(f"Could not abort the upload to {key}: {exc}") from exc
 
     async def prune(self, older_than: timedelta) -> int:
         cutoff = time.time() - older_than.total_seconds()

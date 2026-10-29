@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from app.domain.enums import SourceUploadStatus
 from app.domain.errors import UnknownJobError
 from app.domain.models import (
     CostLedgerEntry,
@@ -17,6 +18,7 @@ from app.domain.models import (
     NotificationOutboxEntry,
     Purge,
     ReviewToken,
+    SourceUpload,
     VoiceProfile,
     WorkspaceAuditEntry,
     WorkspaceSettings,
@@ -271,6 +273,38 @@ class InMemoryPurgeRepository:
             for purge_id, purge in self._purges.items()
             if purge.workspace_id != workspace_id
         }
+
+
+class InMemorySourceUploads:
+    def __init__(self) -> None:
+        self._uploads: dict[str, SourceUpload] = {}
+
+    async def add(self, upload: SourceUpload) -> None:
+        self._uploads[upload.upload_id] = upload.model_copy(deep=True)
+
+    async def get(self, upload_id: str) -> SourceUpload | None:
+        upload = self._uploads.get(upload_id)
+        return upload.model_copy(deep=True) if upload is not None else None
+
+    async def get_by_key(self, key: str) -> SourceUpload | None:
+        for upload in self._uploads.values():
+            if upload.key == key:
+                return upload.model_copy(deep=True)
+        return None
+
+    async def save(self, upload: SourceUpload) -> None:
+        self._uploads[upload.upload_id] = upload.model_copy(deep=True)
+
+    async def claim(self, key: str, job_id: str) -> bool:
+        for upload in self._uploads.values():
+            if (
+                upload.key == key
+                and upload.status is SourceUploadStatus.COMPLETED
+                and upload.job_id is None
+            ):
+                upload.job_id = job_id
+                return True
+        return False
 
 
 class InMemoryLeaseStore:

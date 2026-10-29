@@ -19,6 +19,7 @@ from app.adapters.in_memory_stores import (
     InMemoryOutbox,
     InMemoryPurgeRepository,
     InMemoryReviewTokens,
+    InMemorySourceUploads,
     InMemoryWorkspaceRepository,
     SystemClock,
 )
@@ -64,6 +65,7 @@ from app.ports import (
     OutboxRepository,
     PurgeRepository,
     ReviewTokenRepository,
+    SourceUploadRepository,
     TaskQueue,
     WorkspaceRepository,
 )
@@ -78,6 +80,7 @@ from app.services.purge import PurgeService
 from app.services.review import ReviewService
 from app.services.selection import SelectionService
 from app.services.submission import JobSubmissionService
+from app.services.uploads import SourceUploadService
 from app.services.workspace import WorkspaceService
 from app.workers.runner import QueueWorker
 
@@ -94,6 +97,7 @@ class Container:
     review_tokens: ReviewTokenRepository
     workspaces_repository: WorkspaceRepository
     purges: PurgeRepository
+    source_uploads: SourceUploadRepository
     leases: LeaseStore
     queue: TaskQueue
     store: ObjectStore
@@ -107,6 +111,7 @@ class Container:
     lifecycle: JobLifecycleService
     derived: DerivedJobService
     purge: PurgeService
+    uploads: SourceUploadService
     submissions: JobSubmissionService
     orchestrator: PipelineOrchestrator
     worker: QueueWorker
@@ -129,6 +134,7 @@ def build_container(settings: Settings | None = None) -> Container:
     review_tokens: ReviewTokenRepository
     workspaces_repository: WorkspaceRepository
     purges: PurgeRepository
+    source_uploads: SourceUploadRepository
     leases: LeaseStore
     dispose: Callable[[], Awaitable[None]] | None = None
 
@@ -141,6 +147,7 @@ def build_container(settings: Settings | None = None) -> Container:
         review_tokens = InMemoryReviewTokens()
         workspaces_repository = InMemoryWorkspaceRepository()
         purges = InMemoryPurgeRepository()
+        source_uploads = InMemorySourceUploads()
         leases = InMemoryLeaseStore(clock)
     else:
         from app.adapters.sql_repository import build_sql_repositories
@@ -154,6 +161,7 @@ def build_container(settings: Settings | None = None) -> Container:
             review_tokens,
             workspaces_repository,
             purges,
+            source_uploads,
             leases,
         ) = build_sql_repositories(settings, clock)
         dispose = repository.dispose  # type: ignore[attr-defined]
@@ -348,6 +356,12 @@ def build_container(settings: Settings | None = None) -> Container:
         clock=clock,
         settings=settings,
     )
+    uploads = SourceUploadService(
+        uploads=source_uploads,
+        store=store,
+        clock=clock,
+        settings=settings,
+    )
     submissions = JobSubmissionService(
         repository=repository,
         queue=queue,
@@ -358,6 +372,7 @@ def build_container(settings: Settings | None = None) -> Container:
         clock=clock,
         settings=settings,
         purge=purge,
+        uploads=uploads,
     )
     derived = DerivedJobService(
         repository=repository,
@@ -383,6 +398,7 @@ def build_container(settings: Settings | None = None) -> Container:
         review_tokens=review_tokens,
         workspaces_repository=workspaces_repository,
         purges=purges,
+        source_uploads=source_uploads,
         leases=leases,
         queue=queue,
         store=store,
@@ -396,6 +412,7 @@ def build_container(settings: Settings | None = None) -> Container:
         lifecycle=lifecycle,
         derived=derived,
         purge=purge,
+        uploads=uploads,
         submissions=submissions,
         orchestrator=orchestrator,
         worker=QueueWorker(

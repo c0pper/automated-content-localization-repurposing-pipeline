@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Protocol
@@ -15,6 +16,7 @@ from app.domain.models import (
     NotificationOutboxEntry,
     Purge,
     ReviewToken,
+    SourceUpload,
     VoiceProfile,
     WorkspaceAuditEntry,
     WorkspaceSettings,
@@ -124,6 +126,23 @@ class PurgeRepository(Protocol):
     async def delete_all(self, workspace_id: str) -> None: ...
 
 
+class SourceUploadRepository(Protocol):
+    async def add(self, upload: SourceUpload) -> None: ...
+
+    async def get(self, upload_id: str) -> SourceUpload | None: ...
+
+    async def get_by_key(self, key: str) -> SourceUpload | None: ...
+
+    async def save(self, upload: SourceUpload) -> None: ...
+
+    async def claim(self, key: str, job_id: str) -> bool:
+        """Atomically attach a completed, unattached upload to ``job_id``.
+
+        Returns ``False`` when no such upload exists, so a key is attached at most once.
+        """
+        ...
+
+
 class LeaseStore(Protocol):
     async def acquire(
         self,
@@ -139,6 +158,18 @@ class LeaseStore(Protocol):
     async def count(self, workspace_id: str) -> int: ...
 
     async def delete_all(self, workspace_id: str) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectHead:
+    size: int
+    content_type: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UploadedPart:
+    part_number: int
+    etag: str
 
 
 class ObjectStore(Protocol):
@@ -160,7 +191,41 @@ class ObjectStore(Protocol):
 
     async def copy(self, source_key: str, destination_key: str) -> str: ...
 
-    async def presign(self, key: str, *, ttl_seconds: int) -> str: ...
+    async def presign(self, key: str, *, ttl_seconds: int) -> str:
+        """Sign a download: the URL authorizes ``GET`` on ``key`` only."""
+        ...
+
+    async def head(self, key: str) -> ObjectHead | None:
+        """Return the object's metadata, or ``None`` when it does not exist."""
+        ...
+
+    async def initiate_multipart(self, key: str, *, content_type: str) -> str:
+        """Start a multipart upload to ``key`` and return its upload ID."""
+        ...
+
+    async def presign_part(
+        self,
+        key: str,
+        upload_id: str,
+        part_number: int,
+        *,
+        ttl_seconds: int,
+    ) -> str:
+        """Sign one part: the URL authorizes ``PUT`` of ``part_number`` to ``key`` only.
+
+        The response to that ``PUT`` carries the part's ``ETag`` header.
+        """
+        ...
+
+    async def complete_multipart(
+        self, key: str, upload_id: str, parts: list[UploadedPart]
+    ) -> None:
+        """Assemble the parts, in part-number order, into one object at ``key``."""
+        ...
+
+    async def abort_multipart(self, key: str, upload_id: str) -> None:
+        """Discard an in-progress upload and its parts; no object is created."""
+        ...
 
     async def prune(self, older_than: timedelta) -> int: ...
 
