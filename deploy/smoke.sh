@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Deployment smoke test: upload a Source Recording through /api/uploads and Caddy to Silo,
 # check Silo upload CORS, submit it as a Job, confirm the Selection Gate, wait for
-# COMPLETED and resolve the review link. Requires curl, dd and python3 on the host.
+# COMPLETED and resolve the review link. Requires bash, curl, coreutils (dd, wc, seq,
+# tr), awk and python3 on the host.
 #
 #   API_BASE_URL=https://pipeline.example.com \
 #   PIPELINE_WORKSPACE_API_KEY=... \
@@ -11,6 +12,7 @@
 set -euo pipefail
 
 API_BASE_URL="${API_BASE_URL:?set API_BASE_URL}"
+API_BASE_URL="${API_BASE_URL%/}"
 PIPELINE_WORKSPACE_API_KEY="${PIPELINE_WORKSPACE_API_KEY:?set PIPELINE_WORKSPACE_API_KEY}"
 SOURCE_FILE="${SOURCE_FILE:?set SOURCE_FILE to a small local mp4 with an audio track}"
 SOURCE_CONTENT_TYPE="${SOURCE_CONTENT_TYPE:-video/mp4}"
@@ -31,57 +33,62 @@ header() {
     tr -d '\r' | awk -v name="$1" 'tolower($0) ~ "^" tolower(name) ":" { sub(/^[^:]*:[ \t]*/, ""); print; exit }'
 }
 
+# Prints a presigned PUT URL for part $2 of upload $1.
+part_url() {
+    api "$API_BASE_URL/api/uploads/$1/parts?numbers=$2" | json "['parts'][0]['url']"
+}
+
+# Prints the Access-Control-Allow-Origin Silo grants origin $2 for a PUT to URL $1.
+preflight() {
+    curl -fsS -o /dev/null -D - -X OPTIONS "$1" \
+        -H "Origin: $2" -H "Access-Control-Request-Method: PUT" | header Access-Control-Allow-Origin
+}
+
 size_bytes=$(wc -c <"$SOURCE_FILE" | tr -d ' ')
 echo "Uploading $SOURCE_FILE ($size_bytes bytes)"
-upload=$(api -X POST "$API_BASE_URL/api/uploads" \
+upload_request=$(python3 -c 'import json,sys; print(json.dumps({"filename": sys.argv[1], "content_type": sys.argv[2], "size_bytes": int(sys.argv[3])}))' \
+    "$(basename "$SOURCE_FILE")" "$SOURCE_CONTENT_TYPE" "$size_bytes")
+read -r upload_id key part_size part_count < <(api -X POST "$API_BASE_URL/api/uploads" \
     -H "Content-Type: application/json" \
     -H "Idempotency-Key: smoke-upload-$(date +%s)" \
-    -d "{\"filename\":\"$(basename "$SOURCE_FILE")\",\"content_type\":\"$SOURCE_CONTENT_TYPE\",\"size_bytes\":$size_bytes}")
-upload_id=$(printf '%s' "$upload" | json "['upload_id']")
-key=$(printf '%s' "$upload" | json "['key']")
-part_size=$(printf '%s' "$upload" | json "['part_size_bytes']")
-part_count=$(printf '%s' "$upload" | json "['part_count']")
+    -d "$upload_request" \
+    | python3 -c "import json,sys; u=json.load(sys.stdin); print(u['upload_id'], u['key'], u['part_size_bytes'], u['part_count'])" \
+    | tr -d '\r')
 echo "upload_id=$upload_id key=$key parts=$part_count"
 
-part_url() {
-    api "$API_BASE_URL/api/uploads/$upload_id/parts?numbers=$1" | json "['parts'][0]['url']"
-}
-
 # Silo CORS (ADR 0022): the frontend origin may PUT, any other origin is refused.
-first_url=$(part_url 1)
-preflight() {
-    curl -sS -o /dev/null -D - -X OPTIONS "$first_url" \
-        -H "Origin: $1" -H "Access-Control-Request-Method: PUT" | header Access-Control-Allow-Origin
-}
-allowed=$(preflight "$FRONTEND_ORIGIN")
+cors_url=$(part_url "$upload_id" 1)
+allowed=$(preflight "$cors_url" "$FRONTEND_ORIGIN")
 [ "$allowed" = "$FRONTEND_ORIGIN" ] || { echo "Silo CORS refused $FRONTEND_ORIGIN (got '$allowed')"; exit 1; }
-refused=$(preflight "$FOREIGN_ORIGIN")
+refused=$(preflight "$cors_url" "$FOREIGN_ORIGIN")
 [ -z "$refused" ] || { echo "Silo CORS allowed $FOREIGN_ORIGIN (got '$refused')"; exit 1; }
 echo "Silo CORS allows $FRONTEND_ORIGIN and refuses $FOREIGN_ORIGIN"
 
-parts="["
+etags=""
 for number in $(seq 1 "$part_count"); do
-    url=$([ "$number" = 1 ] && printf '%s' "$first_url" || part_url "$number")
     headers=$(dd if="$SOURCE_FILE" bs="$part_size" skip=$((number - 1)) count=1 2>/dev/null \
-        | curl -fsS -o /dev/null -D - -X PUT "$url" -H "Origin: $FRONTEND_ORIGIN" \
-            -H "Content-Type:" --data-binary @-)
-    exposed=$(printf '%s' "$headers" | header Access-Control-Expose-Headers)
-    case ",$(printf '%s' "$exposed" | tr -d ' ' | tr '[:upper:]' '[:lower:]')," in
-        *,etag,*) ;;
-        *) echo "Silo CORS does not expose ETag (got '$exposed')"; exit 1 ;;
-    esac
+        | curl -fsS -o /dev/null -D - -X PUT "$(part_url "$upload_id" "$number")" \
+            -H "Origin: $FRONTEND_ORIGIN" -H "Content-Type:" --data-binary @-)
     etag=$(printf '%s' "$headers" | header ETag)
     [ -n "$etag" ] || { echo "Part $number returned no ETag"; exit 1; }
-    parts="$parts$([ "$number" = 1 ] || printf ','){\"part_number\":$number,\"etag\":$(printf '%s' "$etag" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}"
+    etags="$etags$etag"$'\n'
     echo "part $number etag=$etag"
 done
-parts="$parts]"
+exposed=$(printf '%s' "$headers" | header Access-Control-Expose-Headers)
+case ",$(printf '%s' "$exposed" | tr -d ' ' | tr '[:upper:]' '[:lower:]')," in
+    *,etag,*) ;;
+    *) echo "Silo CORS does not expose ETag (got '$exposed')"; exit 1 ;;
+esac
 
-status=$(api -X POST "$API_BASE_URL/api/uploads/$upload_id/complete" \
-    -H "Content-Type: application/json" \
-    -H "Idempotency-Key: smoke-complete-$upload_id" \
-    -d "{\"parts\":$parts}" | json "['status']")
-echo "upload status=$status"
+upload_status=$(printf '%s' "$etags" \
+    | python3 -c 'import json,sys; print(json.dumps({"parts": [{"part_number": n, "etag": e} for n, e in enumerate(sys.stdin.read().split(), 1)]}))' \
+    | api -X POST "$API_BASE_URL/api/uploads/$upload_id/complete" \
+        -H "Content-Type: application/json" \
+        -H "Idempotency-Key: smoke-complete-$upload_id" \
+        --data-binary @- \
+    | json "['status']")
+[ "$upload_status" = "COMPLETED" ] || { echo "Upload did not complete (status=$upload_status)"; exit 1; }
+echo "upload status=$upload_status"
 
 echo "Submitting $key"
 job_id=$(api -X POST "$API_BASE_URL/api/jobs" \

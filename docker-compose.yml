@@ -201,10 +201,11 @@ services:
         set -e
         mcli alias set local http://silo:9000 "$$PIPELINE_SILO_ACCESS_KEY" "$$PIPELINE_SILO_SECRET_KEY"
         mcli mb --ignore-existing "local/$$PIPELINE_SILO_BUCKET"
+        # Env overrides show as `# MINIO_API_...` lines; the stored value defaults to 24h anyway.
         api_config=$$(mcli admin config get local api)
         case "$$api_config" in
-          *"stale_uploads_expiry=24h"*) echo "incomplete multipart uploads abort after 24h" ;;
-          *) echo "Silo stale_uploads_expiry is not 24h: $$api_config" >&2; exit 1 ;;
+          *"MINIO_API_STALE_UPLOADS_EXPIRY=24h"*) echo "incomplete multipart uploads abort after 24h" ;;
+          *) echo "Silo MINIO_API_STALE_UPLOADS_EXPIRY is not 24h: $$api_config" >&2; exit 1 ;;
         esac
     environment:
       PIPELINE_SILO_ACCESS_KEY: ${PIPELINE_SILO_ACCESS_KEY}

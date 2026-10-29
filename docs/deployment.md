@@ -165,11 +165,11 @@ The script:
 1. Starts a Source Upload through `/api/uploads`.
 2. Checks that Silo CORS allows `FRONTEND_ORIGIN` and refuses another origin.
 3. PUTs the parts through Caddy to Silo, reads each `ETag` and completes the upload.
-4. Submits the upload as an `object` Job.
+4. Submits a Job with the upload as its `object` source.
 5. Waits for `AWAITING_SELECTION`, confirms the gate, waits for `COMPLETED` and resolves
    the review link.
 
-`FRONTEND_ORIGIN` defaults to `API_BASE_URL`. Set it to one of the configured frontend
+`FRONTEND_ORIGIN` defaults to `API_BASE_URL` without a trailing slash. Set it to one of the configured frontend
 origins. Run the smoke test after every deploy and after every restore drill.
 
 ## 6. Backups
