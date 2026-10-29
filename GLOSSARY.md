@@ -33,7 +33,7 @@ What identifies a Source Recording at submission: a remote URL, or a Source Uplo
 _Avoid_: File, asset URL
 
 **Source Upload**:
-A Source Recording file the Creator sends to Workspace storage before submitting a Job. It becomes Source Input only once the upload has finished. A Source Upload never attached to a Job is discarded after the Retention Window.
+A Source Recording file the Creator sends to Workspace storage before submitting a Job. It becomes Source Input only once the upload has finished. A Source Upload never attached to a Job, aborted or left unfinished is discarded after the Retention Window; an attached one expires with its Job's Source Recording.
 _Avoid_: Pre-upload, attachment, object key
 
 **Transcript**:
@@ -181,7 +181,7 @@ A stable, revocable URL granting read-only access to one Job's available review 
 _Avoid_: Presigned URL, asset URL, share link
 
 **Workspace Purge**:
-The irreversible deletion of every Job, asset, review token, cost entry and event in a Workspace, confirmed after a dry-run. It ends the retention promise for delivered assets.
+The irreversible deletion of every Job, asset, review token, cost entry, event and Source Upload in a Workspace, confirmed after a dry-run. It ends the retention promise for delivered assets.
 _Avoid_: Reset, cleanup, wipe
 
 **Retention Window**:

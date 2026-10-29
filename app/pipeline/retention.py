@@ -88,8 +88,9 @@ class RetentionSweeper:
         if self._repository is None:
             return False
         job = await self._repository.get(upload.job_id)
-        # A claim whose Job was never stored leaves no Source Recording to wait for.
-        return job is None or _source_expired(job, cutoff)
+        # attach() claims the upload before the Job is stored, so a missing Job may be one
+        # being submitted right now. Keep it; a Workspace Purge removes true orphans.
+        return job is not None and _source_expired(job, cutoff)
 
     async def _clear_job_intermediates(self) -> int:
         if self._repository is None or self._clock is None:

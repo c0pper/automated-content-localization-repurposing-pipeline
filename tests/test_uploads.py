@@ -398,3 +398,18 @@ def test_workspace_purge_counts_and_removes_source_uploads(tmp_path, repository_
         assert asyncio.run(container.source_uploads.get(upload["upload_id"])) is None
         assert asyncio.run(container.store.head(upload["key"])) is None
     assert _staged_uploads(settings) == []
+
+
+def test_upload_claimed_by_a_job_not_yet_stored_is_kept(tmp_path):
+    # attach() claims the upload before the Job is saved; a sweep in between must wait.
+    clock = MutableClock(datetime.now(UTC))
+    container = build_container(make_settings(tmp_path), clock=clock)
+    with TestClient(create_app(container=container)) as client:
+        upload = _completed_upload(client, key="claimed")
+    assert asyncio.run(container.source_uploads.claim(upload["key"], "job_in_flight"))
+
+    clock.advance(days=8)
+    asyncio.run(container.retention.sweep())
+
+    assert asyncio.run(container.store.head(upload["key"])) is not None
+    assert asyncio.run(container.source_uploads.get(upload["upload_id"])) is not None
