@@ -1,5 +1,5 @@
 /**
- * Reads a picked file's duration in the browser, before and independently of
+ * Reads a Source Recording's duration in the browser, before and independently of
  * its Source Upload (US33). Only a hint: some codecs can't be decoded here, so
  * an unreadable file yields `null` and ingest stays the authority on length.
  */

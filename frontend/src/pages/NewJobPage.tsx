@@ -33,7 +33,7 @@ interface JobDraft {
 }
 
 /**
- * The picked file's Source Upload; `key` is set once it completed.
+ * The Source Recording's Source Upload; `key` is set once it completed.
  * `durationSeconds` is read locally: undefined while reading, null if unreadable.
  */
 interface SourceUploadState {
@@ -219,7 +219,9 @@ export function NewJobPage({
   };
 
   const duration = upload?.durationSeconds;
-  const tooLong = typeof duration === "number" && duration > ws.max_video_minutes * 60;
+  const durationText = typeof duration === "number" ? formatDuration(duration, t.locale) : null;
+  const maxVideoSeconds = ws.max_video_minutes * 60;
+  const tooLong = typeof duration === "number" && duration > maxVideoSeconds;
 
   const submitLabel =
     phase === "uploading"
@@ -283,16 +285,16 @@ export function NewJobPage({
                     <span aria-hidden="true">{upload.percent}%</span>
                   </div>
                 )}
-                {typeof duration === "number" && (
+                {durationText && (
                   <p>
-                    {t.fileDuration}: {formatDuration(duration, t.locale)}
+                    {t.fileDuration}: {durationText}
                   </p>
                 )}
-                {tooLong && (
+                {tooLong && durationText && (
                   <p role="alert">
                     {interpolate(t.videoTooLong, {
-                      duration: formatDuration(duration, t.locale),
-                      limit: formatDuration(ws.max_video_minutes * 60, t.locale),
+                      duration: durationText,
+                      limit: formatDuration(maxVideoSeconds, t.locale),
                     })}
                   </p>
                 )}

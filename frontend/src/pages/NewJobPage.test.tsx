@@ -53,6 +53,18 @@ function stubUpload() {
 
 const video = new File(["0123456789"], "talk.mp4", { type: "video/mp4" });
 
+/** A controllable `readDuration`: the test decides what each read resolves to. */
+function stubDuration() {
+  const pending: Array<(seconds: number | null) => void> = [];
+  const fn = vi.fn(() => new Promise<number | null>((resolve) => pending.push(resolve)));
+  return {
+    fn,
+    /** Resolves the `index`-th read (default: the latest). */
+    read: (seconds: number | null, index = pending.length - 1) =>
+      act(async () => pending[index](seconds)),
+  };
+}
+
 function pickFile(file: File = video) {
   fireEvent.change(screen.getByLabelText("Video file"), { target: { files: [file] } });
 }
@@ -435,6 +447,98 @@ describe("NewJobPage", () => {
       expect(screen.getByRole("button", { name: "Create job" })).toBeTruthy();
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(onCreated).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("reading the file's duration", () => {
+    // The workspace fixture allows 90 minutes.
+    async function renderWithStubs() {
+      const upload = stubUpload();
+      const duration = stubDuration();
+      const onCreated = vi.fn();
+      mockFetch.mockResolvedValueOnce(jsonResponse(workspace));
+      render(<NewJobPage onCreated={onCreated} uploadSource={upload.fn} readDuration={duration.fn} />);
+      await screen.findByLabelText("Video file");
+      return { upload, duration, onCreated };
+    }
+
+    it("shows a readable file's duration in the UI language, without a warning", async () => {
+      const { duration } = await renderWithStubs();
+      pickFile();
+      expect(duration.fn).toHaveBeenCalledWith(video);
+
+      await duration.read(3903.4);
+
+      expect(screen.getByText("Duration: 1 hr 5 min 3 sec")).toBeTruthy();
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("announces a non-blocking warning for a file over the allowed length", async () => {
+      const { upload, duration, onCreated } = await renderWithStubs();
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ job_id: "job_1", status: "RECEIVED", created_at: "2026-10-28T00:00:00Z" }, 202),
+      );
+      pickFile();
+      await duration.read(91 * 60);
+
+      expect(screen.getByRole("alert").textContent).toBe(
+        "This video is 1 hr 31 min long, over the 1 hr 30 min limit, so it will likely be rejected. You can still submit it.",
+      );
+
+      fireEvent.click(screen.getByLabelText("es"));
+      await upload.finish("uploads/upl_1/source.mp4");
+      fireEvent.click(screen.getByRole("button", { name: "Create job" }));
+      await waitFor(() => expect(onCreated).toHaveBeenCalledWith("job_1"));
+    });
+
+    it("does not warn for a file exactly at the limit", async () => {
+      const { duration } = await renderWithStubs();
+      pickFile();
+      await duration.read(90 * 60);
+
+      expect(screen.getByText("Duration: 1 hr 30 min")).toBeTruthy();
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("shows no duration and no error for an unreadable file, which can still be submitted", async () => {
+      const { upload, duration, onCreated } = await renderWithStubs();
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ job_id: "job_1", status: "RECEIVED", created_at: "2026-10-28T00:00:00Z" }, 202),
+      );
+      pickFile();
+      await duration.read(null);
+
+      expect(screen.queryByText(/^Duration:/)).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+
+      fireEvent.click(screen.getByLabelText("es"));
+      await upload.finish("uploads/upl_1/source.mp4");
+      fireEvent.click(screen.getByRole("button", { name: "Create job" }));
+      await waitFor(() => expect(onCreated).toHaveBeenCalledWith("job_1"));
+    });
+
+    it("ignores a late duration from a file that was since replaced", async () => {
+      const { duration } = await renderWithStubs();
+      pickFile();
+      pickFile(new File(["01"], "short.mp4", { type: "video/mp4" }));
+
+      await duration.read(120 * 60, 0);
+      expect(screen.queryByText(/^Duration:/)).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+
+      await duration.read(65);
+      expect(screen.getByText("Duration: 1 min 5 sec")).toBeTruthy();
+    });
+
+    it("clears the duration and warning when the file is removed", async () => {
+      const { duration } = await renderWithStubs();
+      pickFile();
+      await duration.read(91 * 60);
+
+      fireEvent.click(screen.getByRole("button", { name: "Cancel upload" }));
+
+      expect(screen.queryByText(/^Duration:/)).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
     });
   });
 });
