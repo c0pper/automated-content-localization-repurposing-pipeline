@@ -929,6 +929,7 @@ whatever assets exist for a partial Job and reports the Job's status.
   "job_budget_usd": "50.00",
   "monthly_budget_usd": "500.00",
   "max_concurrent_jobs": 2,
+  "max_video_minutes": 90.0,
   "current_month_spend_usd": "12.34",
   "remaining_usd": "487.66",
   "voice_profile": {"provider": "elevenlabs", "voice_id": "...", "updated_at": "..."}
@@ -936,7 +937,8 @@ whatever assets exist for a partial Job and reports the Job's status.
 ```
 
 `PUT /api/workspace` replaces the mutable settings document (same fields except
-`workspace_id`, `current_month_spend_usd`, `remaining_usd` and `voice_profile`). It validates
+`workspace_id`, `max_video_minutes`, `current_month_spend_usd`, `remaining_usd` and
+`voice_profile`). `max_video_minutes` is the deployment's input length limit, read-only here. It validates
 the allowlist against the configured providers, budgets against positive bounds and
 concurrency against the worker capacity. Changes are audited. `PUT` is safe/idempotent and
 does not require an idempotency key.

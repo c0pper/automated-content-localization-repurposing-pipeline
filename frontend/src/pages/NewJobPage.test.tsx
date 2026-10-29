@@ -17,6 +17,7 @@ const workspace: WorkspaceSettings = {
   job_budget_usd: "50.00",
   monthly_budget_usd: "500.00",
   max_concurrent_jobs: 3,
+  max_video_minutes: 90,
   current_month_spend_usd: "10.00",
   remaining_usd: "490.00",
   voice_profile: null,

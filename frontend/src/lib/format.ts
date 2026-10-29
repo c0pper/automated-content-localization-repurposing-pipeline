@@ -35,6 +35,29 @@ export function joinOrEmpty(values: readonly (string | number)[]): string {
   return values.length ? values.join(", ") : EMPTY_VALUE;
 }
 
+const DURATION_UNITS = [
+  ["hour", 3600],
+  ["minute", 60],
+  ["second", 1],
+] as const;
+
+/**
+ * A length in seconds in `locale`, e.g. "1 hr 5 min 3 sec" in English.
+ * Zero units are left out; rounds to the nearest second.
+ */
+export function formatDuration(totalSeconds: number, locale: string): string {
+  let rest = Math.max(0, Math.round(totalSeconds));
+  const parts: string[] = [];
+  for (const [unit, size] of DURATION_UNITS) {
+    const n = Math.floor(rest / size);
+    rest -= n * size;
+    if (n > 0 || (unit === "second" && parts.length === 0)) {
+      parts.push(new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "short" }).format(n));
+    }
+  }
+  return new Intl.ListFormat(locale, { style: "narrow", type: "unit" }).format(parts);
+}
+
 /**
  * A wire ISO timestamp as a date and time in `locale` (the current UI
  * language), in the viewer's time zone unless `timeZone` is given.

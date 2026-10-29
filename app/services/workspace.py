@@ -163,6 +163,7 @@ class WorkspaceService:
             "job_budget_micro_usd": settings.job_budget_micro_usd,
             "monthly_budget_micro_usd": settings.monthly_budget_micro_usd,
             "max_concurrent_jobs": settings.max_concurrent_jobs,
+            "max_video_minutes": self._settings.max_video_minutes,
             "current_month_spend_micro_usd": spent,
             "remaining_micro_usd": max(
                 0, settings.monthly_budget_micro_usd - spent

@@ -159,6 +159,7 @@ def workspace_view(snapshot: dict) -> dict:
         "job_budget_usd": format_usd(snapshot["job_budget_micro_usd"]),
         "monthly_budget_usd": format_usd(snapshot["monthly_budget_micro_usd"]),
         "max_concurrent_jobs": snapshot["max_concurrent_jobs"],
+        "max_video_minutes": snapshot["max_video_minutes"],
         "current_month_spend_usd": format_usd(
             snapshot["current_month_spend_micro_usd"]
         ),

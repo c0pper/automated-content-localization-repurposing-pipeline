@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useStore } from "zustand";
 import { errorText } from "@/lib/errors";
+import { formatDuration } from "@/lib/format";
 import type { Dict } from "@/lib/i18n";
 import { formatUsd } from "@/lib/money";
 import { CURATED_MODELS, MODEL_TASKS, type ModelTask } from "@/lib/models";
 import { uploadSource as defaultUploadSource, type UploadSource } from "@/lib/sourceUpload";
 import { interpolate, useTranslation } from "@/lib/useTranslation";
+import { readVideoDuration as defaultReadDuration, type ReadDuration } from "@/lib/videoDuration";
 import { jobStore, profileStore } from "@/store";
 import type { SubmitJobPayload } from "@/store/jobStore";
 
@@ -13,6 +15,8 @@ export interface NewJobPageProps {
   onCreated: (jobId: string) => void;
   /** Injected so tests can stub the Source Upload. */
   uploadSource?: UploadSource;
+  /** Injected so tests can stub reading the file's duration. */
+  readDuration?: ReadDuration;
 }
 
 /**
@@ -28,12 +32,16 @@ interface JobDraft {
   models: Partial<Record<ModelTask, string>>;
 }
 
-/** The picked file's Source Upload; `key` is set once it completed. */
+/**
+ * The picked file's Source Upload; `key` is set once it completed.
+ * `durationSeconds` is read locally: undefined while reading, null if unreadable.
+ */
 interface SourceUploadState {
   file: File;
   percent: number;
   status: "uploading" | "done" | "failed";
   key?: string;
+  durationSeconds?: number | null;
 }
 
 const emptyDraft = (defaults: Record<string, string>): JobDraft => ({
@@ -86,7 +94,11 @@ function uploadAnnouncement(t: Dict, upload: SourceUploadState | null): string {
 
 const ACCEPTED_VIDEO ="video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v";
 
-export function NewJobPage({ onCreated, uploadSource = defaultUploadSource }: NewJobPageProps) {
+export function NewJobPage({
+  onCreated,
+  uploadSource = defaultUploadSource,
+  readDuration = defaultReadDuration,
+}: NewJobPageProps) {
   const t = useTranslation();
   const ws = useStore(profileStore, (s) => s.workspace);
   const busy = useStore(jobStore, (s) => s.busy);
@@ -159,6 +171,11 @@ export function NewJobPage({ onCreated, uploadSource = defaultUploadSource }: Ne
     });
     uploadRef.current = { controller, done };
     setUpload({ file, percent: 0, status: "uploading" });
+    // Only a hint: the upload proceeds whatever the browser reads (US33).
+    readDuration(file).then(
+      (durationSeconds) => patch({ durationSeconds }),
+      () => patch({ durationSeconds: null }),
+    );
     done.then(
       ({ key }) => patch({ status: "done", percent: 100, key }),
       (err) => {
@@ -200,6 +217,9 @@ export function NewJobPage({ onCreated, uploadSource = defaultUploadSource }: Ne
       setPhase(null);
     }
   };
+
+  const duration = upload?.durationSeconds;
+  const tooLong = typeof duration === "number" && duration > ws.max_video_minutes * 60;
 
   const submitLabel =
     phase === "uploading"
@@ -262,6 +282,19 @@ export function NewJobPage({ onCreated, uploadSource = defaultUploadSource }: Ne
                     <progress aria-label={t.uploadProgress} max={100} value={upload.percent} />{" "}
                     <span aria-hidden="true">{upload.percent}%</span>
                   </div>
+                )}
+                {typeof duration === "number" && (
+                  <p>
+                    {t.fileDuration}: {formatDuration(duration, t.locale)}
+                  </p>
+                )}
+                {tooLong && (
+                  <p role="alert">
+                    {interpolate(t.videoTooLong, {
+                      duration: formatDuration(duration, t.locale),
+                      limit: formatDuration(ws.max_video_minutes * 60, t.locale),
+                    })}
+                  </p>
                 )}
                 <button type="button" onClick={removeFile}>
                   {upload.status === "uploading" ? t.cancelUpload : t.removeFile}
