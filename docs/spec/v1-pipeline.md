@@ -326,8 +326,9 @@ before the Job is submitted.
 A presigned URL authorizes exactly one HTTP method on one key (and part). Silo gets this from
 SigV4; the local object store signs method, key, part number and expiry in its HMAC and
 serves signed part PUTs itself, so the same client code works against both backends. Silo
-CORS allows `PUT` from the configured frontend origins and exposes `ETag`. A bucket lifecycle
-rule aborts incomplete multipart uploads after 24 hours. Upload sessions are not resumable
+CORS allows `PUT` from the configured frontend origins and exposes `ETag`. Silo aborts
+incomplete multipart uploads after 24 hours. It rejects the S3 lifecycle rule for this, so the
+deployment sets its stale-upload expiry and checks it at startup. Upload sessions are not resumable
 across page reloads in v1.
 
 The same submission shape is accepted by the inbound webhook endpoint. Webhooks authenticate

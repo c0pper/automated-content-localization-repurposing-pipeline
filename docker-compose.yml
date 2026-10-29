@@ -173,6 +173,12 @@ services:
     environment:
       MINIO_ROOT_USER: ${PIPELINE_SILO_ACCESS_KEY:?set PIPELINE_SILO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${PIPELINE_SILO_SECRET_KEY:?set PIPELINE_SILO_SECRET_KEY}
+      # Browsers PUT Source Upload parts straight to Silo (ADR 0022). Silo's default is `*`.
+      MINIO_API_CORS_ALLOW_ORIGIN: ${PIPELINE_SILO_CORS_ALLOWED_ORIGINS:-${PIPELINE_CORS_ALLOWED_ORIGINS:-https://${PIPELINE_DOMAIN}}}
+      # Silo rejects S3 AbortIncompleteMultipartUpload lifecycle rules; this server-wide
+      # expiry aborts incomplete multipart uploads instead. silo-init asserts it.
+      MINIO_API_STALE_UPLOADS_EXPIRY: 24h
+      MINIO_API_STALE_UPLOADS_CLEANUP_INTERVAL: 1h
       PIPELINE_SILO_BUCKET: ${PIPELINE_SILO_BUCKET:-pipeline}
     volumes:
       - silodata:/data
@@ -195,6 +201,11 @@ services:
         set -e
         mcli alias set local http://silo:9000 "$$PIPELINE_SILO_ACCESS_KEY" "$$PIPELINE_SILO_SECRET_KEY"
         mcli mb --ignore-existing "local/$$PIPELINE_SILO_BUCKET"
+        api_config=$$(mcli admin config get local api)
+        case "$$api_config" in
+          *"stale_uploads_expiry=24h"*) echo "incomplete multipart uploads abort after 24h" ;;
+          *) echo "Silo stale_uploads_expiry is not 24h: $$api_config" >&2; exit 1 ;;
+        esac
     environment:
       PIPELINE_SILO_ACCESS_KEY: ${PIPELINE_SILO_ACCESS_KEY}
       PIPELINE_SILO_SECRET_KEY: ${PIPELINE_SILO_SECRET_KEY}
