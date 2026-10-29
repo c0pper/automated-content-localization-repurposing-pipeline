@@ -3,7 +3,8 @@
 	admin off
 }
 
-# Public API. Automatic HTTPS via Let's Encrypt / ZeroSSL.
+# Creator Portal and public API on one origin. Automatic HTTPS via Let's Encrypt / ZeroSSL,
+# or Caddy's local CA when PIPELINE_DOMAIN is `localhost`.
 {$PIPELINE_DOMAIN} {
 	encode zstd gzip
 	header {
@@ -12,7 +13,20 @@
 		Referrer-Policy "no-referrer"
 		-Server
 	}
-	reverse_proxy api:8000
+
+	@api path /api/* /healthz /readyz
+	handle @api {
+		reverse_proxy api:8000
+	}
+
+	# The portal routes in the URL hash, so every page is index.html plus static files.
+	handle {
+		root * /srv
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-cache"
+		file_server
+	}
 }
 
 # Public S3 hostname so presigned Silo URLs resolve for reviewers.

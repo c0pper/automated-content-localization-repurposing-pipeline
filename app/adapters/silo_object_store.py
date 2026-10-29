@@ -8,6 +8,7 @@ keeps the same key layout as :class:`LocalObjectStore`: delivered artifacts unde
 from __future__ import annotations
 
 import asyncio
+import mimetypes
 import shutil
 import time
 from datetime import timedelta
@@ -95,8 +96,12 @@ class SiloObjectStore:
         return await self.get(url, destination)
 
     async def put(self, source: Path, key: str) -> str:
+        # Without a type Silo serves binary/octet-stream, which Firefox will not play.
+        content_type, _ = mimetypes.guess_type(key)
+        extra_args = {"ContentType": content_type} if content_type else None
+
         def _upload() -> None:
-            self._client.upload_file(str(source), self._bucket, key)
+            self._client.upload_file(str(source), self._bucket, key, ExtraArgs=extra_args)
 
         try:
             await asyncio.to_thread(_upload)

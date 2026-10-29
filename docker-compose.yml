@@ -37,7 +37,10 @@ x-app-environment: &app-environment
 
 services:
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: .
+      dockerfile: deploy/caddy/Dockerfile
+    image: ${PIPELINE_CADDY_IMAGE:-automated-content-pipeline-caddy:latest}
     restart: unless-stopped
     ports:
       - "80:80"
