@@ -13,3 +13,4 @@ build/
 frontend/node_modules
 *.tsbuildinfo
 .claude/worktrees/
+caddy-local-root.crt

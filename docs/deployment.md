@@ -2,7 +2,8 @@
 
 v1 ships as one Docker Compose stack: Caddy, the API, the worker, Postgres, Redis, Silo
 (S3-compatible object storage) and a nightly backup service. Caddy is the only public
-ingress; the Silo console stays private.
+ingress and also serves the Creator Portal (the built `frontend/`); the Silo console stays
+private.
 
 The Compose file is the deployment contract. See
 [ADR 0014](adr/0014-single-host-compose.md) and
@@ -90,7 +91,11 @@ curl -fsS https://pipeline.example.com/readyz
 
 Caddy terminates TLS for both hostnames:
 
-- `https://pipeline.example.com` → `api:8000`
+- `https://pipeline.example.com/api/*`, `/healthz`, `/readyz` → `api:8000`
+- every other path on `https://pipeline.example.com` → the Creator Portal, built into the
+  Caddy image by [deploy/caddy/Dockerfile](../deploy/caddy/Dockerfile). Portal and API share
+  one origin, so the httpOnly auth cookies need no CORS. Rebuild the `caddy` service to ship
+  frontend changes.
 - `https://s3.pipeline.example.com` → `silo:9000`
 
 The Silo console (`:9001`) is not proxied. Review assets redirect to a short-lived
@@ -222,7 +227,51 @@ A Workspace Purge is two-step (`POST /api/workspace/purge` then
 Backups taken before the purge still exist until their 30-day retention expires. Treat a
 purge as irreversible for live data, not as a way to erase backups.
 
-## 9. Operations checklist
+## 9. Local trial without a domain
+
+The same stack runs on a workstation with Docker Desktop, under `https://localhost` and
+`https://s3.localhost`. Caddy issues both certificates from its own local CA instead of
+Let's Encrypt. Use this to try the stack. It is not a deployment: there is no off-host
+backup and the host disk is not checked for encryption.
+
+1. Free ports 80 and 443, then create the env file and replace every secret:
+
+   ```bash
+   cp .env.localhost.example .env.production
+   docker compose --env-file .env.production up -d --build
+   ```
+
+2. Trust Caddy's root certificate once. It persists in the `caddy_data` volume.
+
+   ```bash
+   docker compose --env-file .env.production cp \
+     caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-local-root.crt
+   ```
+
+   - Firefox: Settings → Privacy & Security → Certificates → View Certificates →
+     Authorities → Import, and tick "Trust this CA to identify websites".
+   - Chrome / Edge on Windows: `certutil -user -addstore Root caddy-local-root.crt`.
+
+   Without it, the portal shows a certificate warning, and clip playback and Source Uploads
+   fail silently: they load from `s3.localhost`, where the browser never offers to accept
+   the warning.
+
+3. Open `https://localhost`. Set a Voice Profile before the first Job (§5).
+
+AI providers stay stubbed unless their keys are in `.env.production`. Rendering is real
+ffmpeg, so clips play. Removing the stack keeps its data; add `-v` to delete the volumes,
+including the local CA:
+
+```bash
+docker compose --env-file .env.production down      # keep data
+docker compose --env-file .env.production down -v   # wipe everything
+```
+
+To test on a public server without buying a domain, use a free wildcard DNS name whose
+subdomains also resolve. `PIPELINE_DOMAIN=203-0-113-10.sslip.io` (your server's IP with dashes)
+covers `s3.203-0-113-10.sslip.io` too, and Let's Encrypt issues real certificates for both.
+
+## 10. Operations checklist
 
 - [ ] Host volumes and the backup target are encrypted at rest.
 - [ ] `.env.production` is present, mode `600`, and not committed.
