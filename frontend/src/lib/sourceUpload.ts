@@ -78,7 +78,7 @@ export function createSourceUploader(uploadApi: UploadApi, uploaderOptions: Uplo
   ): Promise<{ key: string }> {
     const inner = controller.signal;
     // If the Creator cancels during this call, the upload it created is left to
-    // the bucket lifecycle rule (ADR 0022): its id never reaches us.
+    // Silo's 24-hour incomplete-upload expiry (ADR 0022): its id never reaches us.
     const started = await uploadApi.start(
       { filename: file.name, content_type: contentTypeOf(file), size_bytes: file.size },
       inner,
@@ -126,8 +126,8 @@ export function createSourceUploader(uploadApi: UploadApi, uploaderOptions: Uplo
       const completed = await uploadApi.complete(started.upload_id, parts, inner);
       return { key: completed.key };
     } catch (err) {
-      // Stop the other parts, then discard the upload; the bucket lifecycle rule
-      // cleans up if this call is lost too.
+      // Stop the other parts, then discard the upload; Silo's incomplete-upload
+      // expiry cleans up if this call is lost too.
       const cancelled = inner.aborted;
       controller.abort();
       uploadApi.abort(started.upload_id).catch(() => {});

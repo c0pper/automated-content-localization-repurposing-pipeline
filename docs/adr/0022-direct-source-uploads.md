@@ -19,6 +19,6 @@ The server generates every upload key. A presigned URL allows exactly one HTTP m
 - The `url` source and the API-level `object` source stay. The Creator UI offers Upload and URL only. Webhooks keep submitting URLs.
 - Uploads are validated three times. When the upload starts, the declared extension, content type and size are checked against `max_source_bytes`. When it completes, the size of the assembled object is checked, and the object is deleted on a mismatch. Ingest still runs the authoritative media probe.
 - Silo CORS must allow `PUT` from the frontend origin and expose `ETag`.
-- Uploads that never complete are aborted by a bucket lifecycle rule after 24 hours. Completed Source Uploads never attached to a Job are deleted by the retention sweep after the Retention Window. Attached ones expire with the Source Recording (ADR 0009). A Workspace Purge already deletes `uploads/`.
+- Uploads that never complete are aborted after 24 hours. *(Amended in #45: this originally said "by a bucket lifecycle rule". Silo rejects the S3 `AbortIncompleteMultipartUpload` lifecycle rule, so the deployment sets Silo's stale-upload expiry to 24 hours instead.)* Completed Source Uploads never attached to a Job are deleted by the retention sweep after the Retention Window. Attached ones expire with the Source Recording (ADR 0009). A Workspace Purge already deletes `uploads/`.
 - An upload interrupted by a page reload is lost in v1. Resuming across sessions is deferred.
 - Uploads make no paid provider calls and do not touch the Cost Ledger.

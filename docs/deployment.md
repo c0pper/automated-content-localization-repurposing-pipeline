@@ -73,7 +73,8 @@ Startup order is enforced with health checks:
 
 1. Postgres and Redis become healthy.
 2. `migrate` applies `migrations/*.sql`.
-3. Silo becomes healthy and `silo-init` creates the bucket.
+3. Silo becomes healthy, and `silo-init` creates the bucket and checks the 24-hour
+   incomplete-upload expiry (§4).
 4. The API and worker start; Caddy starts once the API is healthy.
 
 Readiness covers the database, the object store and the queue:
@@ -104,18 +105,72 @@ If presigned links return `SignatureDoesNotMatch`, check that:
 - the request reaches Silo through Caddy (bypassing Caddy changes the host);
 - the host clock is synchronised (NTP).
 
+### Source Uploads
+
+Creators upload Source Recordings from the browser straight to
+`https://s3.pipeline.example.com` as presigned multipart PUTs
+([ADR 0022](adr/0022-direct-source-uploads.md)). Compose configures Silo for this. Nothing
+is set by hand.
+
+- **CORS origins.** `PIPELINE_SILO_CORS_ALLOWED_ORIGINS` lists the frontend origins that
+  may PUT parts to Silo, comma-separated with no spaces (for example
+  `https://app.example.com,https://admin.example.com`). It defaults to
+  `PIPELINE_CORS_ALLOWED_ORIGINS`, which in turn defaults to `https://${PIPELINE_DOMAIN}`.
+  Compose passes it to Silo as `MINIO_API_CORS_ALLOW_ORIGIN`. Silo allows `PUT` and exposes
+  `ETag` to those origins only. The browser needs `ETag` to complete the upload. Any other
+  origin gets no `Access-Control-Allow-Origin` header, so the browser refuses the response.
+  Silo's own default is `*`, so never leave the value empty.
+- **Incomplete uploads.** Silo aborts multipart uploads that are still incomplete 24 hours
+  after they start, and frees their parts. Silo rejects the S3
+  `AbortIncompleteMultipartUpload` lifecycle rule, so Compose sets the server-wide
+  equivalent instead: `MINIO_API_STALE_UPLOADS_EXPIRY=24h`, checked hourly
+  (`MINIO_API_STALE_UPLOADS_CLEANUP_INTERVAL=1h`). `silo-init` reads the setting back on
+  every deploy and fails if it is not `24h`, so the API and worker never start without it.
+
+Check both on a running stack:
+
+```bash
+docker compose --env-file .env.production logs silo-init   # "...abort after 24h"
+docker compose --env-file .env.production exec silo \
+  sh -c 'mcli alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null &&
+         mcli admin config get local api'
+```
+
+The output shows `# MINIO_API_CORS_ALLOW_ORIGIN=...` and
+`# MINIO_API_STALE_UPLOADS_EXPIRY=24h` as the active overrides. These take precedence over
+the stored values on the `api` line below them, which can still show
+`cors_allow_origin=*`. The smoke test checks CORS from outside.
+
+If browser uploads fail with a CORS error, or with "storage did not expose ETag", check that
+the page's origin, including scheme and port, appears exactly in
+`PIPELINE_SILO_CORS_ALLOWED_ORIGINS`. Then recreate Silo with
+`docker compose --env-file .env.production up -d silo`.
+
 ## 5. Smoke test
+
+The smoke test needs a small local MP4 with an audio track. A file of a few minutes is
+enough. The Workspace must have a Voice Profile set (`PUT /api/workspace/voice-profile`),
+because localization fails closed without one.
 
 ```bash
 API_BASE_URL=https://pipeline.example.com \
 PIPELINE_WORKSPACE_API_KEY="$(grep '^PIPELINE_WORKSPACE_API_KEY=' .env.production | cut -d= -f2-)" \
-INPUT_URL=https://example.com/sample.mp4 \
+SOURCE_FILE=./sample.mp4 \
+FRONTEND_ORIGIN=https://app.example.com \
 ./deploy/smoke.sh
 ```
 
-The script submits a synthetic Job, waits for `AWAITING_SELECTION`, confirms the gate,
-waits for `COMPLETED` and resolves the review link. Run it after every deploy and after
-every restore drill.
+The script:
+
+1. Starts a Source Upload through `/api/uploads`.
+2. Checks that Silo CORS allows `FRONTEND_ORIGIN` and refuses another origin.
+3. PUTs the parts through Caddy to Silo, reads each `ETag` and completes the upload.
+4. Submits a Job with the upload as its `object` source.
+5. Waits for `AWAITING_SELECTION`, confirms the gate, waits for `COMPLETED` and resolves
+   the review link.
+
+`FRONTEND_ORIGIN` defaults to `API_BASE_URL` without a trailing slash. Set it to one of the configured frontend
+origins. Run the smoke test after every deploy and after every restore drill.
 
 ## 6. Backups
 
@@ -145,7 +200,8 @@ Do not drill against production.
 ./deploy/restore.sh postgres/pipeline-20261027T020000Z.sql.gz silo/20261027
 API_BASE_URL=https://pipeline.example.com \
 PIPELINE_WORKSPACE_API_KEY=... \
-INPUT_URL=https://example.com/sample.mp4 \
+SOURCE_FILE=./sample.mp4 \
+FRONTEND_ORIGIN=https://app.example.com \
 ./deploy/smoke.sh
 ```
 
@@ -172,7 +228,9 @@ purge as irreversible for live data, not as a way to erase backups.
 - [ ] `.env.production` is present, mode `600`, and not committed.
 - [ ] `docker compose ps` shows every service healthy/running.
 - [ ] `/readyz` returns `200`.
-- [ ] `./deploy/smoke.sh` passes.
+- [ ] `PIPELINE_SILO_CORS_ALLOWED_ORIGINS` (or `PIPELINE_CORS_ALLOWED_ORIGINS`) lists every
+      frontend origin.
+- [ ] `./deploy/smoke.sh` passes, including the Source Upload and Silo CORS checks.
 - [ ] The nightly backup log shows a fresh Postgres dump and Silo mirror.
 - [ ] A restore drill has been completed and recorded.
 - [ ] Caddy certificates renew automatically (`docker compose logs caddy`).
